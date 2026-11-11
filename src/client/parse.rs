@@ -137,6 +137,22 @@ pub fn tool_text(item: &Value) -> Option<String> {
     }
 }
 
+/// The title a model made: the `title` of its JSON answer, or its first line; no quotes, at most
+/// 60 characters. None when it made nothing.
+pub fn clean_title(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    let text = serde_json::from_str::<Value>(raw)
+        .ok()
+        .and_then(|v| v.get("title").and_then(Value::as_str).map(str::to_string))
+        .unwrap_or_else(|| raw.lines().next().unwrap_or("").to_string());
+    let t = text.trim().trim_matches(|c: char| matches!(c, '"' | '\'' | '「' | '」' | '『' | '』' | '“' | '”' | '`')).trim().trim_end_matches('。').trim();
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.chars().take(60).collect())
+    }
+}
+
 /// The code mode's `exec` (a script that calls the other tools): what it is doing.
 fn exec_text(item: &Value) -> String {
     match item.get("status").and_then(Value::as_str).unwrap_or("") {

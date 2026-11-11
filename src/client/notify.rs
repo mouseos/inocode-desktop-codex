@@ -58,7 +58,71 @@ impl<F: Fn(Event)> Session<'_, F> {
         }
     }
 
+    /// A thread of a light model makes the title of the thread the first message was sent in, when
+    /// that thread has none. A new one is untitled until its first message is sent; Codex Desktop
+    /// shows the first words in the meantime and replaces them with the made title.
+    pub(super) fn make_title(&mut self, tid: &str, text: &str) -> Result<(), String> {
+        if self.untitled.as_deref() != Some(tid) || self.title.is_some() || !self.titled.insert(tid.to_string()) {
+            return Ok(());
+        }
+        self.untitled = None;
+        let provider = self.settings.model_provider.clone().unwrap_or_else(|| "openai".to_string());
+        let Some((_, model)) = self.settings.title_models.iter().find(|(p, _)| *p == provider).cloned() else { return Ok(()) };
+        let clipped: String = text.trim().chars().take(2000).collect();
+        if clipped.is_empty() {
+            return Ok(());
+        }
+        self.title = Some(TitleJob { target: tid.to_string(), text: clipped, thread: None, buf: String::new() });
+        let mut p = json!({ "ephemeral": true, "model": model, "modelProvider": provider, "approvalPolicy": "never", "sandbox": "read-only" });
+        if let Some(c) = &self.settings.cwd {
+            p["cwd"] = json!(c);
+        }
+        self.request("thread/start", p, Pending::TitleThread)
+    }
+
+    /// What the title thread says: the notifications of it do not go to the chat.
+    fn title_note(&mut self, method: &str, params: &Value) {
+        match method {
+            "item/agentMessage/delta" => {
+                if let (Some(job), Some(d)) = (self.title.as_mut(), params.get("delta").and_then(Value::as_str)) {
+                    job.buf.push_str(d);
+                }
+            }
+            "item/completed" => {
+                let item = params.get("item").unwrap_or(&Value::Null);
+                if item.get("type").and_then(Value::as_str) == Some("agentMessage") {
+                    if let (Some(job), Some(t)) = (self.title.as_mut(), item.get("text").and_then(Value::as_str)) {
+                        if !t.trim().is_empty() {
+                            job.buf = t.to_string();
+                        }
+                    }
+                }
+            }
+            "turn/completed" => {
+                if let Some(job) = self.title.take() {
+                    if let Some(name) = clean_title(&job.buf) {
+                        let _ = self.request("thread/name/set", json!({ "threadId": job.target, "name": name }), Pending::Other);
+                    }
+                }
+            }
+            "error" => {
+                if params.get("willRetry").and_then(Value::as_bool) != Some(true) {
+                    self.title = None;
+                }
+            }
+            _ => {}
+        }
+    }
+
     pub(super) fn notification(&mut self, method: &str, params: &Value) {
+        // The notifications of the thread that makes a title are not the chat's.
+        if let Some(t) = self.title.as_ref().and_then(|j| j.thread.clone()) {
+            let from = params.get("threadId").or_else(|| params.pointer("/thread/id")).and_then(Value::as_str);
+            if from == Some(t.as_str()) {
+                self.title_note(method, params);
+                return;
+            }
+        }
         // The diff of a file change comes with its item; the approval of that item shows it.
         if matches!(method, "item/started" | "item/updated" | "item/completed") {
             let item = params.get("item").unwrap_or(&Value::Null);

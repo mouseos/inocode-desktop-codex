@@ -273,6 +273,14 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
         Event::Notify { method, params } => {
             crate::panel_data::on_notify(app, &method, &params);
             crate::accounts_page::on_notify(app, &method, &params);
+            // The name of the open thread changed (a title was made, or it was renamed).
+            if method == "thread/name/updated" {
+                let name = params.get("threadName").or_else(|| params.get("name")).and_then(|v| v.as_str()).unwrap_or("").trim();
+                let mine = params.get("threadId").and_then(|v| v.as_str()) == Some(state.borrow().active.as_str());
+                if mine && !name.is_empty() {
+                    app.global::<AppState>().set_session_title(SharedString::from(name));
+                }
+            }
             if method == "inocode/accounts/switched" {
                 // One line in the chat: which account, and why (alias only).
                 let to = params.get("toAlias").and_then(|v| v.as_str()).unwrap_or("");

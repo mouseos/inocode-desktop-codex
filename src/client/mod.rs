@@ -26,7 +26,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 pub use approval::approval_info;
-pub use parse::{history_from_thread, parse_account, parse_models, parse_threads, rate_limit_text, tool_detail, tool_text, is_running};
+pub use parse::{history_from_thread, parse_account, parse_models, parse_threads, rate_limit_text, tool_detail, tool_text, is_running, clean_title};
 pub use transport::{base_client_version, find_inocode, probe_models};
 pub use types::*;
 

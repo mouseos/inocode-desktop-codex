@@ -197,6 +197,8 @@ pub struct Settings {
     /// model_reasoning_summary of the server's configuration; "auto" is sent when it has none
     /// (the model's own default is "none", which asks for no summary of the thinking).
     pub summary: Option<String>,
+    /// (provider, model id) of a light model per provider: what makes the title of a thread.
+    pub title_models: Vec<(String, String)>,
 }
 
 impl Settings {
@@ -239,6 +241,7 @@ impl Default for Settings {
             allowed_policies: None,
             allowed_sandboxes: None,
             summary: None,
+            title_models: Vec::new(),
         }
     }
 }

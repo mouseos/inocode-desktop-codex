@@ -90,6 +90,9 @@ pub(super) enum Pending {
     ThreadStart,
     ThreadResume,
     TurnStart,
+    /// The thread that makes the title of another (ephemeral), and its one turn.
+    TitleThread,
+    TitleTurn,
     Models,
     Requirements,
     Config,
@@ -126,6 +129,19 @@ pub(super) struct Session<'a, F: Fn(Event)> {
     /// When model/list was last requested (the desktop client treats it as stale after 5 minutes).
     pub(super) models_asked: Instant,
     pub(super) ready: bool,
+    /// The thread that has no title yet (its first message makes one).
+    pub(super) untitled: Option<String>,
+    /// Threads a title was asked for in this connection.
+    pub(super) titled: std::collections::HashSet<String>,
+    pub(super) title: Option<TitleJob>,
+}
+
+/// A title being made by a short-lived thread of a light model (Codex Desktop: generateTitle).
+pub(super) struct TitleJob {
+    pub(super) target: String,
+    pub(super) text: String,
+    pub(super) thread: Option<String>,
+    pub(super) buf: String,
 }
 
 impl<'a, F: Fn(Event)> Session<'a, F> {
@@ -155,6 +171,9 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
             login_pending: false,
             models_asked: Instant::now(),
             ready: false,
+            untitled: None,
+            titled: Default::default(),
+            title: None,
         }
     }
 
@@ -254,6 +273,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                 let mut params = json!({ "threadId": tid, "input": [{ "type": "text", "text": text, "text_elements": [] }] });
                 self.turn_params(&mut params);
                 self.request("turn/start", params, Pending::TurnStart)?;
+                self.make_title(&tid, &text)?;
             }
             Command::PromptWith(text, extra) => {
                 let Some(tid) = self.active_thread.clone() else {
@@ -265,6 +285,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                 let mut params = json!({ "threadId": tid, "input": input });
                 self.turn_params(&mut params);
                 self.request("turn/start", params, Pending::TurnStart)?;
+                self.make_title(&tid, &text)?;
             }
             Command::NewThread => {
                 let params = thread_start_params(self.settings);
@@ -487,6 +508,8 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                 Pending::Requirements => return self.request("config/read", json!({ "includeLayers": false }), Pending::Config),
                 Pending::Config => return self.begin_thread(),
                 Pending::Daybreak => {}
+                // No title: the first words of the message stay as it.
+                Pending::TitleThread | Pending::TitleTurn => self.title = None,
                 _ => self.report_error(&message),
             }
             return Ok(());
@@ -511,6 +534,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                     .and_then(Value::as_str)
                     .ok_or("thread/start の応答に thread.id がありません")?;
                 *self.active_thread = Some(tid.to_string());
+                self.untitled = Some(tid.to_string());
                 self.turn_id = None;
                 self.thread_cwd = result.get("cwd").and_then(Value::as_str).filter(|c| !c.is_empty()).map(str::to_string);
                 (self.on_event)(Event::ThreadActive { id: tid.to_string(), title: String::new() });
@@ -523,6 +547,13 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                 let thread = result.get("thread").unwrap_or(&Value::Null);
                 if let Some(tid) = thread.get("id").and_then(Value::as_str) {
                     *self.active_thread = Some(tid.to_string());
+                    self.untitled = thread
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|n| !n.is_empty())
+                        .is_none()
+                        .then(|| tid.to_string());
                     self.turn_id = None;
                     (self.on_event)(Event::ThreadActive { id: tid.to_string(), title: thread_title(thread) });
                 }
@@ -595,7 +626,34 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                     }
                 }
             }
-            Pending::Other => {}
+            Pending::TitleThread => {
+                let thread = result.pointer("/thread/id").and_then(Value::as_str).map(str::to_string);
+                let text = self.title.as_ref().map(|j| j.text.clone());
+                match (thread, text) {
+                    (Some(t), Some(text)) => {
+                        if let Some(j) = self.title.as_mut() {
+                            j.thread = Some(t.clone());
+                        }
+                        let prompt = format!(
+                            "次の依頼の内容を表す、短いタイトルを付けてください。依頼と同じ言語で、20 文字ほど。記号や引用符は付けず、\
+                             title だけを JSON で返してください。\n\n依頼:\n{text}"
+                        );
+                        let params = json!({
+                            "threadId": t,
+                            "input": [{ "type": "text", "text": prompt, "text_elements": [] }],
+                            "outputSchema": {
+                                "type": "object",
+                                "properties": { "title": { "type": "string" } },
+                                "required": ["title"],
+                                "additionalProperties": false
+                            }
+                        });
+                        self.request("turn/start", params, Pending::TitleTurn)?;
+                    }
+                    _ => self.title = None,
+                }
+            }
+            Pending::TitleTurn | Pending::Other => {}
         }
         Ok(())
     }
