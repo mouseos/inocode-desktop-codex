@@ -5,6 +5,8 @@ import { IconButton } from "widgets.slint";
 export struct QueueRow {
     id: string,
     text: string,
+    // "" in the server's queue, "sending" or "failed" for a message it has not taken
+    state: string,
 }
 
 // Questions from the agent, the queued follow-up messages and the error banner above the composer.
@@ -26,7 +28,7 @@ export global PromptState {
 
     callback answer(string);
     callback skip-question;
-    // kind: "now" (steer), "edit", "remove"
+    // kind: "now" (steer), "edit", "remove", "retry"
     callback queue-act(string, string);
     callback banner-retry;
     callback banner-close;
@@ -159,14 +161,16 @@ export component QueueList inherits VerticalLayout {
             spacing: 2px;
             Text {
                 text: q.text;
-                color: Theme.fg-secondary;
+                color: q.state == "failed" ? Theme.danger : Theme.fg-secondary;
                 font-size: 12px;
                 vertical-alignment: center;
                 overflow: elide;
                 horizontal-stretch: 1;
             }
+            if q.state == "sending": Text { text: "送信中"; color: Theme.fg-tertiary; font-size: 12px; vertical-alignment: center; }
+            if q.state == "failed": FlatButton { y: 1px; height: 28px; label: "再試行"; clicked => { PromptState.queue-act("retry", q.id); } }
             IconButton { glyph: Glyph.edit-note; box-size: 24px; icon-size: 14px; y: 3px; clicked => { PromptState.queue-act("edit", q.id); } }
-            IconButton { glyph: Glyph.arrow-upward; box-size: 24px; icon-size: 14px; y: 3px; clicked => { PromptState.queue-act("now", q.id); } }
+            if q.state == "": IconButton { glyph: Glyph.arrow-upward; box-size: 24px; icon-size: 14px; y: 3px; clicked => { PromptState.queue-act("now", q.id); } }
             IconButton { glyph: Glyph.close; box-size: 24px; icon-size: 14px; y: 3px; clicked => { PromptState.queue-act("remove", q.id); } }
         }
     }

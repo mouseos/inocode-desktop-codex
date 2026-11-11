@@ -50,6 +50,14 @@ impl<F: Fn(Event)> Session<'_, F> {
         Ok(())
     }
 
+    /// A notification without a threadId counts as ours.
+    fn is_active_thread(&self, params: &Value) -> bool {
+        match (params.get("threadId").and_then(Value::as_str), self.active_thread.as_deref()) {
+            (Some(t), Some(a)) => t == a,
+            _ => true,
+        }
+    }
+
     pub(super) fn notification(&mut self, method: &str, params: &Value) {
         // The diff of a file change comes with its item; the approval of that item shows it.
         if matches!(method, "item/started" | "item/updated" | "item/completed") {
@@ -62,7 +70,10 @@ impl<F: Fn(Event)> Session<'_, F> {
         }
         match method {
             "turn/started" => {
-                self.turn_id = params.pointer("/turn/id").and_then(Value::as_str).map(str::to_string);
+                // The turn of another thread (a sub-agent) is not the one a message is sent into.
+                if self.is_active_thread(params) {
+                    self.turn_id = params.pointer("/turn/id").and_then(Value::as_str).map(str::to_string);
+                }
                 (self.on_event)(Event::TurnStarted);
             }
             "item/started" => {
@@ -159,7 +170,9 @@ impl<F: Fn(Event)> Session<'_, F> {
             "turn/completed" => {
                 self.flush();
                 let interrupted = params.pointer("/turn/status").and_then(Value::as_str) == Some("interrupted");
-                self.turn_id = None;
+                if self.is_active_thread(params) {
+                    self.turn_id = None;
+                }
                 (self.on_event)(Event::TurnDone { interrupted });
                 (self.on_event)(Event::Status("接続済み".into(), Level::Ok));
                 let _ = self.list_threads();

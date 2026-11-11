@@ -342,7 +342,8 @@ pub enum Command {
     OpenThread(String),
     Interrupt,
     /// Send a message into the running turn (turn/steer).
-    Steer(String),
+    /// `key` names the answer: it comes back as the rpc event "prompt.steer:<key>".
+    Steer { key: String, text: String },
     /// Answers to an item/tool/requestUserInput request: (question id, answers).
     Answer { key: String, answers: Vec<(String, Vec<String>)> },
     Approve { key: String, decision: Decision },

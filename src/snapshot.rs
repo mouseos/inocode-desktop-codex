@@ -43,6 +43,17 @@ pub(crate) fn install(app: &AppWindow) {
         });
         extra.push(t);
     }
+    // INOCODE_GUI_SEND=1: messages sent while a turn runs: taken, not taken (with a retry), sent again.
+    if std::env::var("INOCODE_GUI_SEND").is_ok() {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 1), move || {
+            if let Some(app) = weak.upgrade() {
+                crate::prompts::demo(&app);
+            }
+        });
+        extra.push(t);
+    }
     // INOCODE_GUI_DIFF=1: the edits of a turn as the chat shows them, open.
     if std::env::var("INOCODE_GUI_DIFF").is_ok() {
         let weak = app.as_weak();

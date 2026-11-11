@@ -318,17 +318,24 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                     self.request("turn/interrupt", json!({ "threadId": tid, "turnId": turn }), Pending::Other)?;
                 }
             }
-            Command::Steer(text) => match (self.active_thread.clone(), self.turn_id.clone()) {
-                (Some(tid), Some(turn)) => {
-                    let input = json!([{ "type": "text", "text": text, "text_elements": [] }]);
-                    self.request(
-                        "turn/steer",
-                        json!({ "threadId": tid, "expectedTurnId": turn, "input": input }),
-                        Pending::Other,
-                    )?;
+            Command::Steer { key, text } => {
+                let tag = format!("prompt.steer:{key}");
+                match (self.active_thread.clone(), self.turn_id.clone()) {
+                    (Some(tid), Some(turn)) => {
+                        let input = json!([{ "type": "text", "text": text, "text_elements": [] }]);
+                        // The answer (or the error) goes to the screen: a message that was not
+                        // taken must not be lost.
+                        let id = self.next_id;
+                        self.rpc_tags.insert(id, tag);
+                        self.request(
+                            "turn/steer",
+                            json!({ "threadId": tid, "expectedTurnId": turn, "input": input }),
+                            Pending::Other,
+                        )?;
+                    }
+                    _ => (self.on_event)(Event::Rpc { tag, result: Err("実行中のターンがありません".into()) }),
                 }
-                _ => (self.on_event)(Event::Error("実行中のターンがありません".into())),
-            },
+            }
             Command::Answer { key, answers } => {
                 if let Some((id, _, _)) = self.approvals.remove(&key) {
                     let mut map = serde_json::Map::new();
@@ -576,7 +583,16 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                     (self.on_event)(Event::Status("ブラウザでログインしてください".into(), Level::Warn));
                 }
             }
-            Pending::TurnStart | Pending::Other => {}
+            Pending::TurnStart => {
+                // The turn is known from the answer, not only from the notification (a message
+                // sent in between would not find it).
+                if let Some(turn) = result.pointer("/turn/id").and_then(Value::as_str) {
+                    if self.turn_id.is_none() {
+                        self.turn_id = Some(turn.to_string());
+                    }
+                }
+            }
+            Pending::Other => {}
         }
         Ok(())
     }
