@@ -209,11 +209,9 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
             s.set_sandbox_action("セットアップを再試行".into());
             CHECK.with(|c| c.borrow_mut().cause = Some(Cause::Setup));
         }
-        // The trust is written: a new chat starts with it.
-        ("coding.trust", Ok(_)) => {
-            new_chat_here(app);
-        }
-        ("coding.trust", Err(_)) => {
+        // The trust was written (chat.trust is the sidebar's answer): a new chat starts with it.
+        ("chat.trust", Ok(_)) if CHECK.with(|c| c.borrow().cause) == Some(Cause::Trust) => new_chat_here(app),
+        ("chat.trust", Err(_)) if CHECK.with(|c| c.borrow().cause) == Some(Cause::Trust) => {
             s.set_sandbox_notice("設定の保存に失敗しました".into());
             s.set_sandbox_action("".into());
         }
@@ -265,11 +263,9 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         match cause {
             Some(Cause::Setup) => rpc("coding.sandbox.readiness", "windowsSandbox/readiness", Value::Null),
             Some(Cause::Retry) => start_check(&app, &cwd),
-            Some(Cause::Trust) => rpc(
-                "coding.trust",
-                "config/value/write",
-                json!({ "keyPath": trust_key_path(&cwd), "value": "trusted", "mergeStrategy": "replace" }),
-            ),
+            // The same question as for a folder that was added: the path is shown, and only an
+            // answer of yes writes the trust.
+            Some(Cause::Trust) => crate::sidebar::ask_trust(&app, &cwd),
             Some(Cause::Fresh) => new_chat_here(&app),
             None => {}
         }
