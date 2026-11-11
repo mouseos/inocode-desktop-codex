@@ -299,6 +299,18 @@ pub(crate) fn install(app: &AppWindow) {
         });
         extra.push(t);
     }
+    // INOCODE_GUI_EVTAB=<n>: the part of the evidence tab that is open (0 sources, 1 claims, 2 map,
+    // 3 verify) and INOCODE_GUI_TAB=2 for the tab itself.
+    if let Some(n) = std::env::var("INOCODE_GUI_EVTAB").ok().and_then(|v| v.parse::<i32>().ok()) {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 2), move || {
+            if let Some(app) = weak.upgrade() {
+                app.global::<EvidenceState>().set_tab(n);
+            }
+        });
+        extra.push(t);
+    }
     // INOCODE_GUI_PROMPT=<text>: a real turn. Once the app is connected (and INOCODE_GUI_MODEL=<id or
     // name>, when given, is chosen) the text goes the way a typed message goes (the composer's
     // submit: the same turn/start, with summary). INOCODE_GUI_SNAPSHOT_EVERY=<seconds> also writes
