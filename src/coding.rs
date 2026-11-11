@@ -44,13 +44,106 @@ pub(crate) fn trust_key_path(path: &str) -> String {
     format!("projects.\"{}\".trust_level", path.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// The text over the composer when the folder cannot be written.
-pub(crate) fn sandbox_notice(can_setup: bool) -> String {
-    if can_setup {
-        "このフォルダは書き込めません。サンドボックスが読み取り専用で動いています。Windows のサンドボックスをセットアップしてください。".into()
-    } else {
-        "このフォルダは書き込めません。サンドボックスが読み取り専用で動いています。".into()
+/// Why a folder cannot be written, which decides the words and the button of the banner.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum Cause {
+    /// The Windows sandbox is not set up (or needs an update).
+    Setup,
+    /// The set-up could not be read.
+    Retry,
+    /// The folder is not trusted.
+    Trust,
+    /// Everything is in place and the thread still runs read-only (a permission restored by a
+    /// resume, a requirement): a new chat starts with the new state.
+    Fresh,
+}
+
+/// The text over the composer and the label of its button. The words of the set-up are the ones
+/// of Codex Desktop's banner (codex.windowsSandboxBanner.*); the trust is Claude Desktop's
+/// ("Trust workspace").
+pub(crate) fn sandbox_banner(cause: Cause) -> (&'static str, &'static str) {
+    match cause {
+        Cause::Setup => ("このフォルダは書き込めません。続けるには、Windows のセットアップを完了してください。", "続ける"),
+        Cause::Retry => ("Windows のセットアップを確認できませんでした。", "もう一度試す"),
+        Cause::Trust => ("このフォルダは書き込めません。ここで作業するには、このフォルダを信頼してください。", "ワークスペースを信頼"),
+        Cause::Fresh => ("このスレッドは読み取り専用で始まっています。", "新しいチャットで始める"),
     }
+}
+
+/// Whether the folder is trusted in a config/read reply (projects."<path>".trust_level).
+pub(crate) fn is_trusted(config: &Value, cwd: &str) -> bool {
+    let norm = |p: &str| p.replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let want = norm(cwd);
+    config
+        .get("projects")
+        .and_then(Value::as_object)
+        .map(|m| m.iter().any(|(k, v)| norm(k) == want && v.get("trust_level").and_then(Value::as_str) == Some("trusted")))
+        .unwrap_or(false)
+}
+
+/// The cause from what was read: the Windows set-up state (None off Windows) and the trust.
+pub(crate) fn cause_of(windows: bool, readiness: Option<&Result<String, String>>, trusted: bool) -> Cause {
+    if windows {
+        match readiness {
+            Some(Ok(status)) if status == "ready" => {}
+            Some(Ok(_)) => return Cause::Setup,
+            _ => return Cause::Retry,
+        }
+    }
+    if trusted {
+        Cause::Fresh
+    } else {
+        Cause::Trust
+    }
+}
+
+thread_local! {
+    static CHECK: RefCell<Check> = RefCell::new(Check::default());
+}
+
+/// What is read to tell the cause (a banner is shown only once both answers are in).
+#[derive(Default)]
+struct Check {
+    cwd: String,
+    readiness: Option<Result<String, String>>,
+    trusted: Option<bool>,
+    cause: Option<Cause>,
+}
+
+fn rpc(tag: &str, method: &str, params: Value) {
+    if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
+        h.send(Command::Rpc { tag: tag.into(), method: method.into(), params });
+    }
+}
+
+/// Read the state that tells why the folder cannot be written.
+fn start_check(app: &AppWindow, cwd: &str) {
+    CHECK.with(|c| *c.borrow_mut() = Check { cwd: cwd.to_string(), ..Check::default() });
+    app.global::<AppState>().set_sandbox_notice("".into());
+    if cfg!(windows) {
+        rpc("coding.cause.readiness", "windowsSandbox/readiness", Value::Null);
+    } else {
+        CHECK.with(|c| c.borrow_mut().readiness = Some(Ok("ready".into())));
+    }
+    rpc("coding.cause.config", "config/read", json!({ "includeLayers": false }));
+}
+
+fn show(app: &AppWindow, cause: Cause) {
+    let (text, action) = sandbox_banner(cause);
+    CHECK.with(|c| c.borrow_mut().cause = Some(cause));
+    let s = app.global::<AppState>();
+    s.set_sandbox_notice(text.into());
+    s.set_sandbox_action(action.into());
+}
+
+/// Both answers are in: the banner of the cause.
+fn classify(app: &AppWindow) {
+    let (readiness, trusted) = CHECK.with(|c| {
+        let c = c.borrow();
+        (c.readiness.clone(), c.trusted)
+    });
+    let (Some(_), Some(trusted)) = (readiness.as_ref(), trusted) else { return };
+    show(app, cause_of(cfg!(windows), readiness.as_ref(), trusted));
 }
 
 // ------------------------------------------------------------------ screen
@@ -64,13 +157,10 @@ pub(crate) fn render_approvals(app: &AppWindow, st: &State) {
 pub(crate) fn on_applied(app: &AppWindow, st: &mut State, sandbox: &str, cwd: &str) {
     // Writing was meant (workspace-write or full access) but the server runs it read-only.
     let downgraded = !sandbox.is_empty() && sandbox == "readOnly" && st.settings.wants_write();
-    let s = app.global::<AppState>();
     if downgraded {
-        let can_setup = cfg!(windows);
-        s.set_sandbox_can_setup(can_setup);
-        s.set_sandbox_notice(sandbox_notice(can_setup).into());
+        start_check(app, cwd);
     } else {
-        s.set_sandbox_notice("".into());
+        app.global::<AppState>().set_sandbox_notice("".into());
     }
     // The folder used last is where the next new chat starts, also after a restart.
     if !cwd.is_empty() && st.settings.cwd.as_deref() != Some(cwd) {
@@ -85,25 +175,60 @@ pub(crate) fn on_applied(app: &AppWindow, st: &mut State, sandbox: &str, cwd: &s
 pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>) {
     let s = app.global::<AppState>();
     match (tag, result) {
+        // The answers that tell the cause.
+        ("coding.cause.readiness", r) => {
+            let status = r.as_ref().map(|v| v.get("status").and_then(Value::as_str).unwrap_or("").to_string()).map_err(|e| e.clone());
+            CHECK.with(|c| c.borrow_mut().readiness = Some(status));
+            classify(app);
+        }
+        ("coding.cause.config", r) => {
+            let cwd = CHECK.with(|c| c.borrow().cwd.clone());
+            let trusted = r.as_ref().map(|v| is_trusted(v.get("config").unwrap_or(v), &cwd)).unwrap_or(false);
+            CHECK.with(|c| c.borrow_mut().trusted = Some(trusted));
+            classify(app);
+        }
+        // The button of the set-up: ready needs nothing, else the set-up is started.
         ("coding.sandbox.readiness", Ok(v)) => {
             if v.get("status").and_then(Value::as_str) == Some("ready") {
-                s.set_sandbox_can_setup(false);
-                s.set_sandbox_notice("サンドボックスはセットアップ済みです。新しいチャットから使えます。".into());
-            } else if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
+                let cwd = CHECK.with(|c| c.borrow().cwd.clone());
+                start_check(app, &cwd);
+            } else {
                 let cwd = STATE.with(|st| st.borrow().active_cwd.clone());
                 let mut p = json!({ "mode": "elevated" });
                 if !cwd.is_empty() {
                     p["cwd"] = json!(cwd);
                 }
-                h.send(Command::Rpc { tag: "coding.sandbox.setup".into(), method: "windowsSandbox/setupStart".into(), params: p });
-                s.set_sandbox_can_setup(false);
-                s.set_sandbox_notice("サンドボックスをセットアップしています…".into());
+                rpc("coding.sandbox.setup", "windowsSandbox/setupStart", p);
+                s.set_sandbox_action("".into());
+                s.set_sandbox_notice("Windows のセットアップを完了しています".into());
             }
         }
-        ("coding.sandbox.readiness", Err(e)) | ("coding.sandbox.setup", Err(e)) => {
-            s.set_sandbox_notice(format!("サンドボックスのセットアップができません: {e}").into());
+        ("coding.sandbox.readiness", Err(_)) => show(app, Cause::Retry),
+        ("coding.sandbox.setup", Err(_)) => {
+            s.set_sandbox_notice("Windows のセットアップが完了しませんでした".into());
+            s.set_sandbox_action("セットアップを再試行".into());
+            CHECK.with(|c| c.borrow_mut().cause = Some(Cause::Setup));
+        }
+        // The trust is written: a new chat starts with it.
+        ("coding.trust", Ok(_)) => {
+            new_chat_here(app);
+        }
+        ("coding.trust", Err(_)) => {
+            s.set_sandbox_notice("設定の保存に失敗しました".into());
+            s.set_sandbox_action("".into());
         }
         _ => {}
+    }
+}
+
+/// A new chat in the folder of the banner (it takes what is in place now), and the banner goes.
+fn new_chat_here(app: &AppWindow) {
+    let cwd = CHECK.with(|c| c.borrow().cwd.clone());
+    let s = app.global::<AppState>();
+    s.set_sandbox_notice("".into());
+    s.set_sandbox_action("".into());
+    if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
+        h.send(if cwd.is_empty() { Command::NewThread } else { Command::NewThreadIn(cwd) });
     }
 }
 
@@ -111,10 +236,16 @@ pub(crate) fn on_notify(app: &AppWindow, method: &str, params: &Value) {
     if method == "windowsSandbox/setupCompleted" {
         let s = app.global::<AppState>();
         if params.get("success").and_then(Value::as_bool).unwrap_or(false) {
-            s.set_sandbox_notice("サンドボックスのセットアップが終わりました。新しいチャットから書き込めます。".into());
+            // Set up: the next thing is a new chat that has it.
+            s.set_sandbox_notice("Windows のセットアップが完了しました".into());
+            s.set_sandbox_action("新しいチャットで始める".into());
+            CHECK.with(|c| c.borrow_mut().cause = Some(Cause::Fresh));
         } else {
-            let e = params.get("error").and_then(Value::as_str).unwrap_or("失敗しました");
-            s.set_sandbox_notice(format!("サンドボックスのセットアップができません: {e}").into());
+            let e = params.get("error").and_then(Value::as_str).unwrap_or("");
+            let text = if e.is_empty() { "Windows のセットアップが完了しませんでした".to_string() } else { format!("Windows のセットアップが完了しませんでした: {e}") };
+            s.set_sandbox_notice(text.into());
+            s.set_sandbox_action("セットアップを再試行".into());
+            CHECK.with(|c| c.borrow_mut().cause = Some(Cause::Setup));
         }
     }
 }
@@ -124,9 +255,24 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
     let st = app.global::<AppState>();
     let h = handle.clone();
     st.on_reconnect(move || h.send(Command::Reconnect));
-    let h = handle.clone();
+    let weak = app.as_weak();
     st.on_sandbox_setup(move || {
-        h.send(Command::Rpc { tag: "coding.sandbox.readiness".into(), method: "windowsSandbox/readiness".into(), params: Value::Null });
+        let Some(app) = weak.upgrade() else { return };
+        let (cause, cwd) = CHECK.with(|c| {
+            let c = c.borrow();
+            (c.cause, c.cwd.clone())
+        });
+        match cause {
+            Some(Cause::Setup) => rpc("coding.sandbox.readiness", "windowsSandbox/readiness", Value::Null),
+            Some(Cause::Retry) => start_check(&app, &cwd),
+            Some(Cause::Trust) => rpc(
+                "coding.trust",
+                "config/value/write",
+                json!({ "keyPath": trust_key_path(&cwd), "value": "trusted", "mergeStrategy": "replace" }),
+            ),
+            Some(Cause::Fresh) => new_chat_here(&app),
+            None => {}
+        }
     });
     if let Some(which) = std::env::var("INOCODE_GUI_DEMO").ok().filter(|v| v == "1" || v == "2") {
         // After the connection came up (it clears the requests of the old one).
@@ -150,8 +296,14 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
 fn demo(app: &AppWindow, notices: bool) {
     if notices {
         let s = app.global::<AppState>();
-        s.set_sandbox_can_setup(true);
-        s.set_sandbox_notice(sandbox_notice(true).into());
+        let (text, action) = sandbox_banner(match std::env::var("INOCODE_GUI_DEMO_CAUSE").as_deref() {
+            Ok("trust") => Cause::Trust,
+            Ok("fresh") => Cause::Fresh,
+            Ok("retry") => Cause::Retry,
+            _ => Cause::Setup,
+        });
+        s.set_sandbox_notice(text.into());
+        s.set_sandbox_action(action.into());
         s.set_disconnected(true);
         return;
     }
@@ -210,9 +362,25 @@ mod tests {
     }
 
     #[test]
-    fn notice_mentions_setup_only_when_there_is_one() {
-        assert!(sandbox_notice(true).contains("セットアップ"));
-        assert!(!sandbox_notice(false).contains("セットアップ"));
-        assert!(sandbox_notice(false).contains("書き込めません"));
+    fn the_cause_tells_the_banner() {
+        let ready = Ok("ready".to_string());
+        let not = Ok("notConfigured".to_string());
+        let err: Result<String, String> = Err("x".into());
+        assert_eq!(cause_of(true, Some(&not), true), Cause::Setup);
+        assert_eq!(cause_of(true, Some(&err), true), Cause::Retry);
+        assert_eq!(cause_of(true, Some(&ready), false), Cause::Trust);
+        assert_eq!(cause_of(true, Some(&ready), true), Cause::Fresh);
+        assert_eq!(cause_of(false, None, false), Cause::Trust);
+        assert!(sandbox_banner(Cause::Setup).0.contains("Windows"));
+        assert!(!sandbox_banner(Cause::Trust).0.contains("Windows"));
+    }
+
+    #[test]
+    fn trust_is_read_from_the_projects_table() {
+        let cfg = json!({ "projects": { "D:\\work\\app": { "trust_level": "trusted" }, "D:\\other": { "trust_level": "untrusted" } } });
+        assert!(is_trusted(&cfg, "d:/work/app/"));
+        assert!(!is_trusted(&cfg, "D:\\other"));
+        assert!(!is_trusted(&cfg, "D:\\none"));
+        assert!(!is_trusted(&json!({}), "D:\\work\\app"));
     }
 }

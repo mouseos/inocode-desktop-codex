@@ -87,7 +87,8 @@ export global AppState {
     in property <bool> disconnected: false;
     // The folder cannot be written (the server runs it read-only although writing was chosen).
     in property <string> sandbox-notice;
-    in property <bool> sandbox-can-setup: false;
+    // The button of the banner over the composer ("" for none)
+    in property <string> sandbox-action;
 
     callback search-model(string);
     callback pick-effort(int);

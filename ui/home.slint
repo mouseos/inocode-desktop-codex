@@ -516,7 +516,7 @@ export component Home inherits Rectangle {
                 if AppState.sandbox-notice != "": NoticeBar {
                     max-width: Theme.composer-max-width;
                     text: AppState.sandbox-notice;
-                    action: AppState.sandbox-can-setup ? "セットアップ" : "";
+                    action: AppState.sandbox-action;
                     dismiss: "閉じる";
                     acted => { AppState.sandbox-setup(); }
                     dismissed => { AppState.sandbox-dismiss(); }
