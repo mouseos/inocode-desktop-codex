@@ -135,6 +135,10 @@ impl<F: Fn(Event)> Session<'_, F> {
         // The diff of a file change comes with its item; the approval of that item shows it.
         if matches!(method, "item/started" | "item/updated" | "item/completed") {
             let item = params.get("item").unwrap_or(&Value::Null);
+            // The sub-agents of the thread: the team tab draws them (the roster does not list a plain spawn).
+            if item.get("type").and_then(Value::as_str) == Some("collabAgentToolCall") && self.is_active_thread(params) {
+                (self.on_event)(Event::Notify { method: "gui/collabItem".into(), params: item.clone() });
+            }
             if item.get("type").and_then(Value::as_str) == Some("fileChange") {
                 if let (Some(id), Some(changes)) = (item_id(item), item.get("changes").filter(|c| c.is_array())) {
                     self.file_changes.insert(id, changes.clone());

@@ -20,6 +20,10 @@ struct Data {
     agents: Vec<Value>,
     /// who wrote to whom (thread ids) and how often, as the server counts them
     messages: Vec<Value>,
+    /// The agents this thread started that the chat showed (collabAgentToolCall items): the
+    /// roster of team/status does not list the sub-agents of a plain spawn.
+    collab_agents: Vec<Value>,
+    collab_messages: Vec<Value>,
     estimate: Option<Value>,
     /// thread id -> title, from Event::Threads (names for the per-thread table).
     titles: Vec<(String, String)>,
@@ -51,12 +55,105 @@ pub fn agent_label(a: &Value) -> String {
     if s("nickname").is_empty() { s("name").to_string() } else { s("nickname").to_string() }
 }
 
+/// The agents of the roster, and those the chat showed that the roster does not have; the message
+/// counts likewise.
+fn merged(d: &Data) -> (Vec<Value>, Vec<Value>) {
+    let mut agents = d.agents.clone();
+    for a in &d.collab_agents {
+        let id = a.get("id").and_then(Value::as_str).unwrap_or("");
+        if !agents.iter().any(|x| x.get("id").and_then(Value::as_str) == Some(id)) {
+            agents.push(a.clone());
+        }
+    }
+    let key = |m: &Value| (m.get("fromId").cloned().unwrap_or(Value::Null), m.get("toId").cloned().unwrap_or(Value::Null));
+    let mut messages = d.messages.clone();
+    for m in &d.collab_messages {
+        if !messages.iter().any(|x| key(x) == key(m)) {
+            messages.push(m.clone());
+        }
+    }
+    (agents, messages)
+}
+
 /// What the graph is drawn from: the agents, the message counts, and the id of this (main) thread.
 pub fn graph_input() -> (Vec<Value>, Vec<Value>, String) {
     DATA.with(|d| {
         let d = d.borrow();
-        (d.agents.clone(), d.messages.clone(), d.thread_id.clone())
+        let (agents, messages) = merged(&d);
+        (agents, messages, d.thread_id.clone())
     })
+}
+
+/// What a sub-agent's state in a collab item is, in the words of the roster.
+fn collab_state(status: &str) -> &'static str {
+    match status {
+        "completed" | "shutdown" => "done",
+        "errored" | "notFound" | "interrupted" => "blocked",
+        _ => "running",
+    }
+}
+
+/// The first words of what an agent was asked: its name when it has no other.
+fn collab_name(prompt: &str) -> String {
+    let t: String = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
+    t.chars().take(14).collect()
+}
+
+/// A collabAgentToolCall item of the chat: a spawn is an agent started by the sender; the states it
+/// carries are the states of agents; a message to an agent is a line from the sender.
+fn apply_collab(d: &mut Data, item: &Value) {
+    let s = |k: &str| item.get(k).and_then(Value::as_str).unwrap_or("");
+    let sender = s("senderThreadId").to_string();
+    let tool = s("tool");
+    let ts = item.get("completedAtMs").or_else(|| item.get("startedAtMs")).and_then(Value::as_i64).unwrap_or(0);
+    let receivers: Vec<String> = item
+        .get("receiverThreadIds")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default();
+    let upsert = |d: &mut Data, id: &str| -> usize {
+        match d.collab_agents.iter().position(|a| a.get("id").and_then(Value::as_str) == Some(id)) {
+            Some(i) => i,
+            None => {
+                d.collab_agents.push(json!({ "id": id, "name": "", "state": "running", "parentId": sender }));
+                d.collab_agents.len() - 1
+            }
+        }
+    };
+    if tool == "spawnAgent" {
+        for rid in &receivers {
+            let i = upsert(d, rid);
+            let a = &mut d.collab_agents[i];
+            a["parentId"] = json!(sender);
+            if !s("prompt").is_empty() {
+                a["name"] = json!(collab_name(s("prompt")));
+            }
+            for k in ["model", "reasoningEffort"] {
+                if let Some(v) = item.get(k).filter(|v| v.is_string()) {
+                    a[k] = v.clone();
+                }
+            }
+        }
+    } else if !receivers.is_empty() && !matches!(tool, "wait" | "closeAgent") {
+        for rid in &receivers {
+            upsert(d, rid);
+            let from = json!(sender);
+            let to = json!(rid);
+            match d.collab_messages.iter_mut().find(|m| m.get("fromId") == Some(&from) && m.get("toId") == Some(&to)) {
+                Some(m) => {
+                    m["count"] = json!(m.get("count").and_then(Value::as_i64).unwrap_or(0) + 1);
+                    m["lastTsMs"] = json!(ts);
+                }
+                None => d.collab_messages.push(json!({ "fromId": sender, "toId": rid, "count": 1, "lastTsMs": ts, "lastDelivery": "send_message" })),
+            }
+        }
+    }
+    if let Some(states) = item.get("agentsStates").and_then(Value::as_object) {
+        for (tid, st) in states {
+            let i = upsert(d, tid);
+            d.collab_agents[i]["state"] = json!(collab_state(st.get("status").and_then(Value::as_str).unwrap_or("")));
+        }
+    }
 }
 
 pub fn install(app: &AppWindow, host: &Host) {
@@ -115,6 +212,8 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
                     d.thread_id = id.clone();
                     d.agents.clear();
                     d.messages.clear();
+                    d.collab_agents.clear();
+                    d.collab_messages.clear();
                     d.estimate = None;
                 }
             });
@@ -126,6 +225,11 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
         }
         Event::Threads(list) => {
             DATA.with(|d| d.borrow_mut().titles = list.iter().map(|t| (t.id.clone(), t.title.clone())).collect());
+        }
+        // An item of the chat that tells of sub-agents (sent by the client's own session code).
+        Event::Notify { method, params } if method == "gui/collabItem" => {
+            DATA.with(|d| apply_collab(&mut d.borrow_mut(), params));
+            render(app);
         }
         Event::Rpc { tag, result } if tag == TAG_HISTORY => {
             if let Ok(v) = result {
@@ -213,8 +317,8 @@ fn render(app: &AppWindow) {
     DATA.with(|d| {
         let d = d.borrow();
         let now = now_secs();
-        let rows: Vec<AgentRow> = d
-            .agents
+        let (all_agents, _) = merged(&d);
+        let rows: Vec<AgentRow> = all_agents
             .iter()
             .map(|a| {
                 let s = |k: &str| a.get(k).and_then(Value::as_str).unwrap_or("");
