@@ -54,6 +54,35 @@ fn demo(app: &AppWindow, host: &Host) {
         });
         timers.push(t);
     }
+    // INOCODE_GUI_TERM_KEYS="type:echo a;enter;backspace;up;ctrl+c": keys through the same path as
+    // the terminal view's key handler, one every half second from the 7th second.
+    if let Ok(keys) = std::env::var("INOCODE_GUI_TERM_KEYS") {
+        for (i, token) in keys.split(';').enumerate() {
+            let (host, token) = (host.clone(), token.to_string());
+            let t = slint::Timer::default();
+            t.start(slint::TimerMode::SingleShot, Duration::from_millis(7000 + 500 * i as u64), move || {
+                if let Some(text) = token.strip_prefix("type:") {
+                    for ch in text.chars() {
+                        terminal::send_key(&host, &ch.to_string(), false);
+                    }
+                    return;
+                }
+                let (text, ctrl) = match token.as_str() {
+                    "enter" => ("\n", false),
+                    "backspace" => ("\u{8}", false),
+                    "tab" => ("\t", false),
+                    "up" => ("\u{f700}", false),
+                    "down" => ("\u{f701}", false),
+                    "left" => ("\u{f702}", false),
+                    "right" => ("\u{f703}", false),
+                    "ctrl+c" => ("c", true),
+                    _ => return,
+                };
+                terminal::send_key(&host, text, ctrl);
+            });
+            timers.push(t);
+        }
+    }
     TIMERS.with(|t| t.borrow_mut().extend(timers));
 }
 

@@ -188,6 +188,13 @@ pub fn send_text(host: &Host, text: &str) {
     write(host, text.as_bytes());
 }
 
+/// A key as the terminal view reports it (Slint key text and modifiers), for the snapshot demo.
+pub fn send_key(host: &Host, text: &str, ctrl: bool) {
+    if let Some(bytes) = key_bytes(text, ctrl, false, false) {
+        write(host, &bytes);
+    }
+}
+
 /// Slint key text -> the bytes a terminal sends.
 fn key_bytes(text: &str, ctrl: bool, alt: bool, _shift: bool) -> Option<Vec<u8>> {
     let mut chars = text.chars();
