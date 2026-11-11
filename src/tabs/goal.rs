@@ -5,7 +5,7 @@
 
 use super::Host;
 use crate::client::Event;
-use crate::{AppWindow, GoalLine, GoalState};
+use crate::{AppWindow, DiffRow, GoalLine, GoalState};
 use serde_json::{json, Value};
 use slint::{ComponentHandle, ModelRc, VecModel};
 use std::cell::RefCell;
@@ -141,7 +141,7 @@ fn clear_edit(app: &AppWindow) {
     });
     let gs = app.global::<GoalState>();
     gs.set_edit_open(false);
-    gs.set_edit_lines(lines(Vec::new()));
+    gs.set_edit_diff(ModelRc::from(Rc::new(VecModel::from(Vec::<DiffRow>::new()))));
 }
 
 fn lines(v: Vec<GoalLine>) -> ModelRc<GoalLine> {
@@ -164,14 +164,15 @@ fn show_edit(app: &AppWindow, r: &Value) {
     });
     let gs = app.global::<GoalState>();
     gs.set_edit_reason(format!("理由(モデルの主張): {}", s(r, "reason")).into());
-    gs.set_edit_lines(lines(diff_lines(s(r, "currentObjective"), s(r, "newObjective"))));
+    let rows = crate::diff_rows::rows(&unified_diff(s(r, "currentObjective"), s(r, "newObjective")));
+    gs.set_edit_diff(ModelRc::from(Rc::new(VecModel::from(rows))));
     gs.set_edit_meta(usage_line(r).into());
     gs.set_edit_open(true);
 }
 
-/// The whole current and new text, line by line: a line only in the current text is removed, a
-/// line only in the new text is added, the others stand as they are.
-pub fn diff_lines(current: &str, new: &str) -> Vec<GoalLine> {
+/// The current and the new text as one unified diff of a "file" named 目標, in full: the rows of
+/// the chat's diff then show it the way they show an edit (heading with +n −n, numbered lines).
+pub fn unified_diff(current: &str, new: &str) -> String {
     let a: Vec<&str> = current.lines().collect();
     let b: Vec<&str> = new.lines().collect();
     // longest common subsequence of lines
@@ -182,21 +183,28 @@ pub fn diff_lines(current: &str, new: &str) -> Vec<GoalLine> {
         }
     }
     let (mut i, mut j) = (0, 0);
-    let mut out = Vec::new();
+    let mut body = String::new();
     while i < a.len() || j < b.len() {
         if i < a.len() && j < b.len() && a[i] == b[j] {
-            out.push(line(format!("  {}", a[i]), 0));
+            body.push_str(&format!(" {}
+", a[i]));
             i += 1;
             j += 1;
         } else if i < a.len() && (j >= b.len() || t[i + 1][j] >= t[i][j + 1]) {
-            out.push(line(format!("− {}", a[i]), 2));
+            body.push_str(&format!("-{}
+", a[i]));
             i += 1;
         } else {
-            out.push(line(format!("＋ {}", b[j]), 1));
+            body.push_str(&format!("+{}
+", b[j]));
             j += 1;
         }
     }
-    out
+    format!("diff --git a/目標 b/目標
+--- a/目標
++++ b/目標
+@@ -1,{} +1,{} @@
+{}", a.len(), b.len(), body)
 }
 
 fn status_label(st: &str) -> &str {
