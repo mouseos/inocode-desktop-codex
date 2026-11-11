@@ -411,6 +411,8 @@ component ChatView inherits Rectangle {
                 Rectangle { horizontal-stretch: 1; }
                 VerticalLayout {
                     max-width: Theme.composer-max-width;
+                    // A long word in a row (a path) must not make the row wider than the chat.
+                    min-width: 0px;
                     horizontal-stretch: 1000;
                     spacing: 4px;
 
