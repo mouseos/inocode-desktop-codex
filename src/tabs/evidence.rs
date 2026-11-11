@@ -46,6 +46,10 @@ fn status_label(status: &str) -> String {
         "retracted" => "撤回",
         "verified" => "検証済み",
         "unverified" => "未検証",
+        "reported" => "報告",
+        "speculative" => "推測",
+        "disputed" => "争いあり",
+        "refuted" => "反証済み",
         other => other,
     }
     .to_string()
@@ -55,7 +59,9 @@ fn claim_type_label(t: &str) -> String {
     match t {
         "fact" => "事実",
         "legal" => "法的主張",
+        "interpretation" => "解釈",
         "inference" => "推論",
+        "opinion" => "意見",
         "hypothesis" => "仮説",
         other => other,
     }
@@ -416,11 +422,19 @@ fn parse_findings(result: &Value) -> Vec<FindingData> {
 // 書き込み(importSource / addQuote / addClaim / setClaimStatus)
 
 const SOURCE_KINDS: [&str; 4] = ["statute", "document", "case", "other"];
-const CLAIM_TYPES: [&str; 4] = ["fact", "legal", "inference", "hypothesis"];
+const CLAIM_TYPES: [&str; 4] = ["fact", "interpretation", "inference", "opinion"];
 const CLAIM_CONFIDENCES: [&str; 3] = ["high", "medium", "low"];
-/// 主張の絞り込み: 0 = 根拠なし、1 = 根拠あり、2 = 撤回、3 = すべて
-const CLAIM_FILTERS: [(&str, &str); 3] = [("unsupported", "根拠なし"), ("supported", "根拠あり"), ("retracted", "撤回")];
-const CLAIM_STATUSES: [&str; 3] = ["supported", "unsupported", "retracted"];
+/// 主張の絞り込み(サーバーの状態の値): 0 = 検証済み ... 5 = 反証済み、6 = すべて
+const CLAIM_FILTERS: [(&str, &str); 6] = [
+    ("verified", "検証済み"),
+    ("reported", "報告"),
+    ("speculative", "推測"),
+    ("unverified", "未検証"),
+    ("disputed", "争いあり"),
+    ("refuted", "反証済み"),
+];
+/// 主張の行のボタンが書く状態
+const CLAIM_STATUSES: [&str; 3] = ["verified", "unverified", "refuted"];
 
 fn nonempty(t: &str) -> Option<String> {
     let t = t.trim();
@@ -1118,13 +1132,14 @@ mod tests {
         let first = evidence_lines(&claims[0], &spans, &sources);
         assert!(first.starts_with("刑法 第199条(殺人)「人を殺した者は"), "{first}");
         assert!(!first.contains("span-"), "ids are not shown");
-        // 既定は「根拠なし」
-        let unsupported = claim_filter(&claims, 0);
-        assert!(!unsupported.is_empty() && unsupported.iter().all(|c| c.status == "unsupported"));
-        assert_eq!(claim_filter(&claims, 3).len(), claims.len());
+        // サーバーの状態(verified / reported / speculative / unverified / disputed / refuted)で絞る
+        assert_eq!(claim_filter(&claims, 6).len(), claims.len());
         let labels = claim_filter_labels(&claims);
-        assert_eq!(labels.len(), 4);
-        assert!(labels[0].starts_with("根拠なし ") && labels[3] == "すべて");
+        assert_eq!(labels.len(), 7);
+        assert!(labels[0].starts_with("検証済み ") && labels[6] == "すべて");
+        assert_eq!(status_label("reported"), "報告");
+        assert_eq!(status_label("refuted"), "反証済み");
+        assert_eq!(claim_type_label("interpretation"), "解釈");
     }
 
     #[test]
@@ -1229,7 +1244,7 @@ mod tests {
     fn claim_params_split_spans_and_carry_premises() {
         let spans: Vec<String> = ["span-1", "span-2", "span-3"].iter().map(|x| x.to_string()).collect();
         let p = claim_params("被告人は…", 1, 0, &spans, &["claim-001".to_string()]).unwrap();
-        assert_eq!(p["type"], "legal");
+        assert_eq!(p["type"], "interpretation");
         assert_eq!(p["confidence"], "high");
         assert_eq!(p["spanIds"], json!(["span-1", "span-2", "span-3"]));
         assert_eq!(p["premiseIds"], json!(["claim-001"]));

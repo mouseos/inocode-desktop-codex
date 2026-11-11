@@ -186,6 +186,41 @@ pub(crate) fn install(app: &AppWindow) {
         });
         extra.extend([first, second]);
     }
+    // INOCODE_GUI_ACT=<step>;<step>...: what a hand would do on the open settings page, one step every
+    // second from delay+3 (the picture is taken three seconds after the last): text:<row id>=<text> | action:<row id> | toggle:<row id>=on|off |
+    // choose:<row id>=<index>. The rows are the ones of src/settings_page.rs (row-text, row-action,
+    // row-toggle, row-choose): the same callbacks the page's own controls call.
+    if let Ok(steps) = std::env::var("INOCODE_GUI_ACT") {
+        for (i, step) in steps.split(';').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).enumerate() {
+            let weak = app.as_weak();
+            let t = slint::Timer::default();
+            t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 3 + i as u64), move || {
+                let Some(app) = weak.upgrade() else { return };
+                let st = app.global::<SettingsPageState>();
+                let (kind, rest) = step.split_once(':').unwrap_or((step.as_str(), ""));
+                match kind {
+                    "text" => {
+                        if let Some((id, v)) = rest.split_once('=') {
+                            st.invoke_row_text(id.into(), v.into());
+                        }
+                    }
+                    "action" => st.invoke_row_action(rest.into()),
+                    "toggle" => {
+                        if let Some((id, v)) = rest.split_once('=') {
+                            st.invoke_row_toggle(id.into(), v == "on");
+                        }
+                    }
+                    "choose" => {
+                        if let Some((id, v)) = rest.split_once('=') {
+                            st.invoke_row_choose(id.into(), v.parse().unwrap_or(0));
+                        }
+                    }
+                    _ => {}
+                }
+            });
+            extra.push(t);
+        }
+    }
     // INOCODE_GUI_PROMPT=<text>: a real turn. Once the app is connected (and INOCODE_GUI_MODEL=<id or
     // name>, when given, is chosen) the text goes the way a typed message goes (the composer's
     // submit: the same turn/start, with summary). INOCODE_GUI_SNAPSHOT_EVERY=<seconds> also writes
@@ -267,7 +302,8 @@ pub(crate) fn install(app: &AppWindow) {
     }
     let weak = app.as_weak();
     let shot = slint::Timer::default();
-    let shot_at = if live.is_some() { delay } else { delay + 6 };
+    let act_steps = std::env::var("INOCODE_GUI_ACT").map(|s| s.split(';').filter(|x| !x.trim().is_empty()).count() as u64).unwrap_or(0);
+    let shot_at = if live.is_some() { delay } else { (delay + 6).max(if act_steps > 0 { delay + 3 + act_steps + 3 } else { 0 }) };
     shot.start(slint::TimerMode::SingleShot, Duration::from_secs(shot_at), move || {
         if let Some(app) = weak.upgrade() {
             write(&app, std::path::Path::new(&path));

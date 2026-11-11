@@ -29,6 +29,8 @@ struct Data {
     form: Form,
     /// サーバー名 -> 認証の開始中
     logging_in: Vec<String>,
+    /// config.toml の mcp_servers.<名前>.enabled(書いていなければ有効)
+    enabled: Vec<(String, bool)>,
 }
 
 thread_local! {
@@ -94,9 +96,10 @@ pub fn rows(v: &Value) -> Vec<SRow> {
         if sv.get("toolsError").map(|e| e.is_string()).unwrap_or(false) {
             parts.push("ツールを取得できませんでした".into());
         }
-        let mut r = row(&format!("mcpen:{name}"), name, &parts.join(" · "), "", 1, !runtime.eq_ignore_ascii_case("disabled"));
-        r.on = !runtime.eq_ignore_ascii_case("disabled");
-        out.push(r);
+        // 有効かどうかは設定の値(スレッドの接続の状態は、スレッドが無いと null)
+        let configured = D.with(|d| d.borrow().enabled.iter().find(|(n, _)| n == name).map(|(_, e)| *e));
+        let on = configured.unwrap_or(!runtime.eq_ignore_ascii_case("disabled"));
+        out.push(row(&format!("mcpen:{name}"), name, &parts.join(" · "), "", 1, on));
         let needs_login = auth.eq_ignore_ascii_case("notLoggedIn") || runtime.eq_ignore_ascii_case("authenticationRequired");
         if needs_login {
             let busy = logging.iter().any(|n| n == name);
@@ -288,9 +291,26 @@ pub fn text(id: &str, value: &str) -> bool {
     true
 }
 
+/// 画面を開く・読み直す: 設定(有効か)を読んでから、サーバーの一覧を引く。
+pub fn start() {
+    rpc("spage.mcp.conf", "config/read", json!({ "includeLayers": false }));
+}
+
 /// この画面の RPC の応答。使ったら true。
 pub fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>) -> bool {
     match tag {
+        "spage.mcp.conf" => {
+            if let Ok(v) = result {
+                let servers = v.get("config").and_then(|c| c.get("mcp_servers")).and_then(Value::as_object);
+                let list: Vec<(String, bool)> = servers
+                    .map(|m| m.iter().map(|(n, c)| (n.clone(), c.get("enabled").and_then(Value::as_bool).unwrap_or(true))).collect())
+                    .unwrap_or_default();
+                D.with(|d| d.borrow_mut().enabled = list);
+            }
+            rpc("spage.mcp", "mcpServerStatus/list", json!({}));
+            let _ = app;
+            true
+        }
         "spage.mcp.cfg" | "spage.mcp.add" => {
             match result {
                 Ok(_) => {

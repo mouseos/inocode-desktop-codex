@@ -172,7 +172,7 @@ fn choice(id: &str, title: &str, value: &str, opts: Vec<String>) -> SRow {
 pub(crate) fn refresh_mcp(app: &AppWindow) {
     let (open, section) = (app.global::<SettingsPageState>().get_open(), DATA.with(|d| d.borrow().section));
     if open && nav().get(section).map(|s| s.0) == Some(S::Mcp) {
-        rpc("spage.mcp", "mcpServerStatus/list", json!({}));
+        crate::settings_mcp::start();
     }
 }
 
@@ -435,7 +435,7 @@ fn load(app: &AppWindow, section: i32) {
             rpc("spage.skills", "skills/list", json!({ "cwds": [cwd] }));
         }
         S::Plugins => rpc("spage.plugins", "plugin/list", crate::settings_plugins::list_params()),
-        S::Mcp => rpc("spage.mcp", "mcpServerStatus/list", json!({})),
+        S::Mcp => crate::settings_mcp::start(),
         S::Inocode => {
             s.set_layout(1);
             s.set_loading(false);

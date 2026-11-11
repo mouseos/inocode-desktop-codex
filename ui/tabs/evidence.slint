@@ -110,7 +110,7 @@ export global EvidenceState {
     in-out property <string> new-claim-text;
     in-out property <int> new-claim-type: 0;
     in-out property <int> new-claim-confidence: 1;
-    out property <[string]> claim-types: ["事実", "法的主張", "推論", "仮説"];
+    out property <[string]> claim-types: ["事実", "解釈", "推論", "意見"];
     out property <[string]> claim-confidences: ["確実", "たぶん", "未確認"];
     out property <[string]> claim-statuses: ["根拠あり", "根拠なし", "撤回"];
     in property <[VSource]> premise-options;
@@ -118,7 +118,8 @@ export global EvidenceState {
     in-out property <string> span-query;
     in-out property <string> premise-query;
     // 主張の絞り込み: 0 = 根拠なし、1 = 根拠あり、2 = 撤回、3 = すべて(件数つきの文字は Rust が作る)
-    in-out property <int> claim-filter: 0;
+    // 6 = すべて(絞り込みは、サーバーの状態の 6 つのあと)
+    in-out property <int> claim-filter: 6;
     in property <[string]> claim-tags;
     in property <string> claims-empty;
     callback claim-filter-changed(int);
@@ -276,9 +277,9 @@ component ClaimRow inherits Rectangle {
         HorizontalLayout {
             spacing: 6px;
             alignment: start;
-            if root.item.status != "supported": Button { label: "根拠あり"; clicked => { root.set-status(0); } }
-            if root.item.status != "unsupported": Button { label: "根拠なし"; clicked => { root.set-status(1); } }
-            if root.item.status != "retracted": Button { label: "撤回"; clicked => { root.set-status(2); } }
+            if root.item.status != "verified": Button { label: "検証済み"; clicked => { root.set-status(0); } }
+            if root.item.status != "unverified": Button { label: "未検証"; clicked => { root.set-status(1); } }
+            if root.item.status != "refuted": Button { label: "反証済み"; clicked => { root.set-status(2); } }
         }
     }
 }
