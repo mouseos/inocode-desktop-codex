@@ -312,6 +312,28 @@ pub(crate) fn install(app: &AppWindow) {
         });
         extra.push(t);
     }
+    // INOCODE_GUI_COLLAB=<file>: a JSON array of collabAgentToolCall items, as the chat gets them
+    // (spawnAgent, wait with agentsStates, sendInput): the team tab draws the sub-agents from them.
+    if let Ok(file) = std::env::var("INOCODE_GUI_COLLAB") {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 1), move || {
+            let Some(app) = weak.upgrade() else { return };
+            let Ok(text) = std::fs::read_to_string(&file) else { return };
+            // "MAIN" in the file is this thread
+            let active = STATE.with(|st| st.borrow().active.clone());
+            let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&text.replace("MAIN", &active)) else { return };
+            for item in items {
+                let event = Event::Notify { method: "gui/collabItem".into(), params: item };
+                TAB_HOST.with(|h| {
+                    if let Some(host) = h.borrow().as_ref() {
+                        crate::tabs::event(&app, host, &event);
+                    }
+                });
+            }
+        });
+        extra.push(t);
+    }
     // INOCODE_GUI_PROMPT=<text>: a real turn. Once the app is connected (and INOCODE_GUI_MODEL=<id or
     // name>, when given, is chosen) the text goes the way a typed message goes (the composer's
     // submit: the same turn/start, with summary). INOCODE_GUI_SNAPSHOT_EVERY=<seconds> also writes
