@@ -31,6 +31,9 @@ export global TerminalState {
     callback select(int);
     callback close(int);
     callback key(string, bool, bool, bool);
+    // Text the user typed or an input method committed; and whether a key's text is such text.
+    callback type-text(string);
+    pure callback is-text(string) -> bool;
     callback viewport(length, length);
     // Lines to scroll back (positive) or forward; rows selected with the mouse; copy and paste.
     callback scroll(int);
@@ -93,17 +96,35 @@ export component TerminalView inherits Rectangle {
             clip: true;
             changed width => { TerminalState.viewport(self.width, self.height); }
             changed height => { TerminalState.viewport(self.width, self.height); }
-            init => { TerminalState.viewport(self.width, self.height); input.focus(); }
+            init => { TerminalState.viewport(self.width, self.height); ti.focus(); }
             input := FocusScope {
-                key-pressed(e) => {
-                    TerminalState.key(e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift);
-                    return accept;
+                // Keys that are not text (Enter, arrows, Tab, Ctrl/Alt combinations) go to the terminal here.
+                // Text goes on to the small text field below, so an input method (Japanese) can compose
+                // into it; what it commits is sent on from its edited callback.
+                capture-key-pressed(e) => {
+                    if (!TerminalState.is-text(e.text) || (e.modifiers.control && !e.modifiers.alt) || (e.modifiers.alt && !e.modifiers.control)) {
+                        TerminalState.key(e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift);
+                        return accept;
+                    }
+                    return reject;
+                }
+                ti := TextInput {
+                    x: 8px;
+                    y: 6px;
+                    width: 2px;
+                    height: 17px;
+                    single-line: true;
+                    color: transparent;
+                    edited => {
+                        TerminalState.type-text(self.text);
+                        self.text = "";
+                    }
                 }
                 TouchArea {
                     mouse-cursor: MouseCursor.text;
                     pointer-event(e) => {
                         if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
-                            input.focus();
+                            ti.focus();
                             TerminalState.sel-start(Math.floor((self.mouse-y - 6px) / 17px));
                         }
                     }

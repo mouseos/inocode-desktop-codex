@@ -112,6 +112,38 @@ pub fn install(app: &AppWindow, host: &Host) {
             write(&h, &bytes);
         }
     });
+    // Printable text (typed, or committed by an input method) is not a key press: the view passes
+    // it to its text field and sends it here.
+    state.on_is_text(|text| {
+        let mut chars = text.chars();
+        match chars.next() {
+            Some(c) => !(c.is_control() || ('\u{f700}'..='\u{f8ff}').contains(&c)),
+            None => false,
+        }
+    });
+    let (weak, h) = (app.as_weak(), host.clone());
+    state.on_type_text(move |text| {
+        let Some(app) = weak.upgrade() else { return };
+        let moved = TERMS.with(|t| {
+            let mut t = t.borrow_mut();
+            let cur = t.current;
+            match t.list.get_mut(cur) {
+                Some(term) if term.offset > 0 || term.sel.is_some() => {
+                    term.offset = 0;
+                    term.sel = None;
+                    true
+                }
+                _ => false,
+            }
+        });
+        if moved {
+            render(&app);
+        }
+        let text = text.replace("\r\n", "\r").replace('\n', "\r");
+        if !text.is_empty() {
+            write(&h, text.as_bytes());
+        }
+    });
     let weak = app.as_weak();
     state.on_scroll(move |delta| {
         let Some(app) = weak.upgrade() else { return };
