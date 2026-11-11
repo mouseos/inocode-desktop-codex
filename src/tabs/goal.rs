@@ -317,6 +317,7 @@ fn show_evidence(app: &AppWindow, e: &Value) {
         facts.push(line(t, if ok == Some(false) { 2 } else { 0 }));
     }
     let gs = app.global::<GoalState>();
+    gs.set_evidence_expanded(false);
     gs.set_evidence_objective(s(e, "objective").into());
     gs.set_claims(lines(claims));
     gs.set_facts(lines(facts));
