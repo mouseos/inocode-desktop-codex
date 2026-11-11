@@ -317,9 +317,11 @@ export component IntelligenceMenu inherits Rectangle {
                     x: 8px;
                 }
                 Flickable {
-                    height: min(root.state.models.length * 28px, 224px);
-                    content-height: root.state.models.length * 28px;
-                    VerticalLayout {
+                    // The rows with a second line (rank, price) are taller than 28px: the height
+                    // is the rows' own, or the end of the list is cut off and out of reach.
+                    height: min(rows.preferred-height, 224px);
+                    content-height: rows.preferred-height;
+                    rows := VerticalLayout {
                         width: parent.width;
                         for r[i] in root.state.models: MenuItem {
                             item: r;
