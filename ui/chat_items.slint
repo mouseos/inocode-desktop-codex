@@ -1,6 +1,7 @@
 import { Theme } from "theme.slint";
 import { Icon, Glyph } from "icons.slint";
-import { IconButton } from "widgets.slint";
+import { IconButton, Pulse } from "widgets.slint";
+export { Pulse }
 import { MessageActions } from "chat_actions.slint";
 import { DiffRow, AppState } from "state.slint";
 
@@ -36,25 +37,6 @@ export component DiffView inherits Rectangle {
                 }
             }
         }
-    }
-}
-
-// A dot that fades in and out: something is going on.
-export component Pulse inherits Rectangle {
-    property <bool> on: true;
-    width: 14px;
-    Timer {
-        interval: 600ms;
-        running: true;
-        triggered => { root.on = !root.on; }
-    }
-    Rectangle {
-        width: 6px;
-        height: 6px;
-        border-radius: 3px;
-        background: Theme.fg-secondary;
-        opacity: root.on ? 1.0 : 0.25;
-        animate opacity { duration: 500ms; }
     }
 }
 

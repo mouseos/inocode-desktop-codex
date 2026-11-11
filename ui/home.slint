@@ -476,8 +476,18 @@ component ChatView inherits Rectangle {
                     height: 22px;
                     HorizontalLayout {
                         spacing: 2px;
-                        Pulse { }
-                        Text { text: "作業しています…"; color: Theme.fg-secondary; font-size: 12px; vertical-alignment: center; }
+                        // Waiting for you does not move.
+                        if AppState.approvals.length == 0: Pulse { }
+                        if AppState.approvals.length > 0: Rectangle {
+                            width: 14px;
+                            Rectangle { width: 6px; height: 6px; border-radius: 3px; background: Theme.warning; }
+                        }
+                        Text {
+                            text: AppState.approvals.length == 0 ? "作業しています…" : "承認を待っています";
+                            color: Theme.fg-secondary;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
                     }
                 }
             }
@@ -588,7 +598,7 @@ export component Home inherits Rectangle {
                         pick-perm(i) => { AppState.pick-perm(i); }
                         pick-project(i) => { AppState.pick-project(i); }
                         interrupt => { AppState.interrupt(); }
-                        placeholder: "Enter で送信、Shift+Enter で改行";
+                        placeholder: AppState.busy ? "処理中…" : "Enter で送信、Shift+Enter で改行";
                         submit(t) => { root.submit(t); }
                     }
                     Rectangle { horizontal-stretch: 1; }

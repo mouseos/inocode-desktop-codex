@@ -31,11 +31,41 @@ export component IconButton inherits Rectangle {
 
 // Status marker at the end of a session row.
 // kind: 0 none, 1 working, 2 unread (blue dot), 3 error, 4 needs you (yellow dot)
+// Something is going on: a dot with a ring that breathes (Claude Desktop: the working dot with its
+// halo). The ring is only drawn while it runs.
+export component Pulse inherits Rectangle {
+    property <bool> on: true;
+    width: 14px;
+    Timer {
+        interval: 700ms;
+        running: true;
+        triggered => { root.on = !root.on; }
+    }
+    Rectangle {
+        width: root.on ? 12px : 6px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.fg-secondary;
+        opacity: root.on ? 0.15 : 0.0;
+        animate width { duration: 650ms; easing: ease-out; }
+        animate opacity { duration: 650ms; }
+    }
+    Rectangle {
+        width: 6px;
+        height: 6px;
+        border-radius: 3px;
+        background: Theme.fg-secondary;
+        opacity: root.on ? 1.0 : 0.45;
+        animate opacity { duration: 650ms; }
+    }
+}
+
 export component StatusMark inherits Rectangle {
     in property <int> kind;
     width: root.kind == 0 ? 0px : 16px;
     height: 16px;
-    if root.kind == 1: Icon { text: Glyph.sync; font-size: 13px; color: Theme.fg-tertiary; }
+    // working: it moves; a chat that waits for you (4) does not
+    if root.kind == 1: Pulse { }
     if root.kind == 2: Rectangle {
         width: 6px;
         height: 6px;

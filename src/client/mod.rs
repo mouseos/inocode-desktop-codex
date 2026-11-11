@@ -59,6 +59,14 @@ mod tests {
     }
 
     #[test]
+    fn a_made_title_is_cleaned() {
+        assert_eq!(clean_title("{\"title\":\"「V100 の調査」\"}").unwrap(), "V100 の調査");
+        assert_eq!(clean_title("\"Fix the build.\"
+more").unwrap(), "Fix the build.");
+        assert!(clean_title("  ").is_none());
+    }
+
+    #[test]
     fn thinking_and_search_rows_say_what_is_going_on() {
         let r = |a: i64, b: Option<i64>| json!({"type":"reasoning","startedAtMs":a,"completedAtMs":b});
         assert_eq!(tool_text(&json!({"type":"reasoning"})).unwrap(), "思考しています…");
