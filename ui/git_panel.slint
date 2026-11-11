@@ -1,8 +1,9 @@
 import { Theme } from "theme.slint";
 import { Button, LineEdit } from "tabs/g_widgets.slint";
 
-// Git of the working folder: the changed files with their diff, staging, commit, branches, and
-// the review. Rust: src/git_panel.rs.
+// Git of the working folder: the changed files with their diff, staging, commit, branches, the
+// comparison with a branch or a commit, reverting a file or a hunk, line comments, push and a
+// pull request, worktrees, and the review. Rust: src/git_panel.rs.
 
 export struct GitFile {
     path: string,
@@ -16,9 +17,19 @@ export struct GitFile {
 }
 
 // One line of a diff: kind 0 plain, 1 added, 2 removed, 4 hunk / header.
+// hunk: the index of the hunk the line belongs to (-1 before the first); head: the line is the "@@" line.
 export struct GitLine {
     text: string,
     kind: int,
+    hunk: int,
+    head: bool,
+    selected: bool,
+    marked: bool,
+}
+
+export struct GitComment {
+    place: string,
+    text: string,
 }
 
 export global GitState {
@@ -30,9 +41,21 @@ export global GitState {
     in property <[string]> branches;
     in property <string> note;
     in property <bool> busy: false;
-    in-out property <bool> show-branches: false;
+    // 0 the changes, 1 branches, 2 what to compare with, 3 worktrees
+    in-out property <int> mode: 0;
     in-out property <string> commit-message;
     in-out property <string> new-branch;
+    // The comparison: "HEAD" for the uncommitted changes, else the branch or commit.
+    in property <string> base-label: "HEAD";
+    in property <bool> comparing: false;
+    in property <[string]> bases;
+    in property <[string]> worktrees;
+    in-out property <string> new-worktree-name;
+    in property <string> confirm-text;
+    in property <string> confirm-label: "元に戻す";
+    in property <int> selected-line: -1;
+    in property <[GitComment]> comments;
+    in-out property <string> comment-text;
     callback show();
     callback refresh();
     callback select(int);
@@ -42,6 +65,21 @@ export global GitState {
     callback switch-branch(string);
     callback create-branch();
     callback review();
+    callback pick-base(int);
+    callback revert-file();
+    callback revert-hunk(int);
+    callback confirm();
+    callback cancel-confirm();
+    callback select-line(int);
+    callback add-comment();
+    callback remove-comment(int);
+    callback send-comments();
+    callback push();
+    callback create-pr(bool);
+    callback new-worktree();
+    callback thread-in-worktree(int);
+    callback remove-worktree(int);
+    callback set-mode(int);
 }
 
 // The branch under the composer; opens the panel.
@@ -72,13 +110,32 @@ component StatusMark inherits Text {
         : root.code == "D" ? Theme.danger : Theme.warning;
 }
 
+component GitRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> current: false;
+    callback clicked;
+    height: 30px;
+    border-radius: 6px;
+    background: bt.has-hover ? Theme.hover : transparent;
+    Text {
+        x: 10px;
+        width: parent.width - 20px;
+        text: (root.current ? "● " : "   ") + root.label;
+        color: root.current ? Theme.fg : Theme.fg-secondary;
+        font-size: 13px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    bt := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
 export component GitPanel inherits Rectangle {
     visible: GitState.open;
     background: #00000099;
     TouchArea { }
     Rectangle {
-        width: min(parent.width - 48px, 1000px);
-        height: min(parent.height - 48px, 680px);
+        width: min(parent.width - 48px, 1100px);
+        height: min(parent.height - 48px, 720px);
         border-radius: 12px;
         background: Theme.surface;
         border-width: 1px;
@@ -92,123 +149,247 @@ export component GitPanel inherits Rectangle {
                 Text { text: "変更"; color: Theme.fg; font-size: 16px; font-weight: 600; vertical-alignment: center; }
                 Button {
                     label: GitState.branch == "" ? "ブランチ" : GitState.branch;
-                    clicked => { GitState.show-branches = !GitState.show-branches; }
+                    clicked => { GitState.set-mode(GitState.mode == 1 ? 0 : 1); }
                 }
+                Button {
+                    label: "比較: " + GitState.base-label;
+                    clicked => { GitState.set-mode(GitState.mode == 2 ? 0 : 2); }
+                }
+                Button { label: "ワークツリー"; clicked => { GitState.set-mode(GitState.mode == 3 ? 0 : 3); } }
                 Rectangle { horizontal-stretch: 1; }
-                Button { label: "レビュー"; clicked => { GitState.review(); } }
                 Button { label: "更新"; clicked => { GitState.refresh(); } }
                 Button { label: "閉じる"; clicked => { GitState.open = false; } }
             }
+            HorizontalLayout {
+                spacing: 8px;
+                height: 28px;
+                alignment: end;
+                Button { label: "プッシュ"; clicked => { GitState.push(); } }
+                Button { label: "PR を作成"; clicked => { GitState.create-pr(false); } }
+                Button { label: "下書き PR"; clicked => { GitState.create-pr(true); } }
+                Button { label: "レビュー"; clicked => { GitState.review(); } }
+            }
             // The body takes the height that is left; what is in it fills it.
             Rectangle {
-              vertical-stretch: 1;
-              if GitState.show-branches: VerticalLayout {
-                width: parent.width;
-                height: parent.height;
-                spacing: 8px;
-                HorizontalLayout {
+                vertical-stretch: 1;
+                if GitState.mode == 1: VerticalLayout {
+                    width: parent.width;
+                    height: parent.height;
                     spacing: 8px;
-                    height: 28px;
-                    LineEdit { text <=> GitState.new-branch; horizontal-stretch: 1; }
-                    Button { label: "新しいブランチを作って切り替える"; primary: true; clicked => { GitState.create-branch(); } }
-                }
-                Flickable {
-                    vertical-stretch: 1;
-                    content-height: bl.preferred-height;
-                    bl := VerticalLayout {
-                        spacing: 2px;
-                        for b in GitState.branches: Rectangle {
-                            height: 30px;
-                            border-radius: 6px;
-                            background: bt.has-hover ? Theme.hover : transparent;
-                            Text {
-                                x: 10px;
-                                text: (b == GitState.branch ? "● " : "   ") + b;
-                                color: b == GitState.branch ? Theme.fg : Theme.fg-secondary;
-                                font-size: 13px;
-                                vertical-alignment: center;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        height: 28px;
+                        LineEdit { text <=> GitState.new-branch; horizontal-stretch: 1; }
+                        Button { label: "新しいブランチを作って切り替える"; primary: true; clicked => { GitState.create-branch(); } }
+                    }
+                    Flickable {
+                        vertical-stretch: 1;
+                        content-height: bl.preferred-height;
+                        bl := VerticalLayout {
+                            spacing: 2px;
+                            for b in GitState.branches: GitRow {
+                                label: b;
+                                current: b == GitState.branch;
+                                clicked => { GitState.switch-branch(b); }
                             }
-                            bt := TouchArea { mouse-cursor: pointer; clicked => { GitState.switch-branch(b); } }
                         }
                     }
                 }
-            }
-              if !GitState.show-branches: HorizontalLayout {
-                width: parent.width;
-                height: parent.height;
-                spacing: 12px;
-                VerticalLayout {
-                    width: 330px;
+                if GitState.mode == 2: VerticalLayout {
+                    width: parent.width;
+                    height: parent.height;
                     spacing: 8px;
                     Flickable {
                         vertical-stretch: 1;
-                        content-height: fl.preferred-height;
-                        fl := VerticalLayout {
-                            spacing: 1px;
-                            if GitState.files.length == 0: Text { text: "変更はありません"; color: Theme.fg-tertiary; font-size: 12px; height: 30px; vertical-alignment: center; }
-                            for f[i] in GitState.files: Rectangle {
-                                height: 30px;
+                        content-height: cl.preferred-height;
+                        cl := VerticalLayout {
+                            spacing: 2px;
+                            for b[i] in GitState.bases: GitRow {
+                                label: b;
+                                current: (i == 0 && !GitState.comparing) || b == GitState.base-label;
+                                clicked => { GitState.pick-base(i); }
+                            }
+                        }
+                    }
+                }
+                if GitState.mode == 3: VerticalLayout {
+                    width: parent.width;
+                    height: parent.height;
+                    spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        height: 28px;
+                        LineEdit { text <=> GitState.new-worktree-name; horizontal-stretch: 1; }
+                        Button { label: "新しいワークツリーを作る"; primary: true; clicked => { GitState.new-worktree(); } }
+                    }
+                    Flickable {
+                        vertical-stretch: 1;
+                        content-height: wl.preferred-height;
+                        wl := VerticalLayout {
+                            spacing: 2px;
+                            for w[i] in GitState.worktrees: Rectangle {
+                                height: 34px;
                                 border-radius: 6px;
-                                background: f.selected ? Theme.selected : fa.has-hover ? Theme.hover : transparent;
-                                fa := TouchArea { mouse-cursor: pointer; clicked => { GitState.select(i); } }
+                                background: wh.has-hover ? Theme.hover : transparent;
+                                wh := TouchArea { }
                                 HorizontalLayout {
-                                    padding-left: 6px;
-                                    padding-right: 4px;
-                                    spacing: 6px;
-                                    StatusMark { code: f.status; }
-                                    Text { text: f.path; color: Theme.fg; font-size: 12px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
-                                    Text { text: f.stat; color: Theme.fg-tertiary; font-size: 11px; vertical-alignment: center; }
-                                    Rectangle {
-                                        width: sl.preferred-width + 14px;
-                                        height: 22px;
-                                        y: 4px;
-                                        border-radius: 4px;
-                                        background: sa.has-hover ? Theme.pressed : Theme.hover;
-                                        sl := Text { text: f.can-stage ? "ステージ" : "解除"; color: Theme.fg; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
-                                        sa := TouchArea { mouse-cursor: pointer; clicked => { GitState.toggle-stage(i); } }
+                                    padding-left: 10px;
+                                    padding-right: 6px;
+                                    spacing: 8px;
+                                    Text { text: w; color: Theme.fg; font-size: 12px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                                    Button { label: "ここで新規スレッド"; clicked => { GitState.thread-in-worktree(i); } }
+                                    Button { label: "削除"; clicked => { GitState.remove-worktree(i); } }
+                                }
+                            }
+                        }
+                    }
+                }
+                if GitState.mode == 0: HorizontalLayout {
+                    width: parent.width;
+                    height: parent.height;
+                    spacing: 12px;
+                    VerticalLayout {
+                        width: 330px;
+                        spacing: 8px;
+                        Flickable {
+                            vertical-stretch: 1;
+                            content-height: fl.preferred-height;
+                            fl := VerticalLayout {
+                                spacing: 1px;
+                                if GitState.files.length == 0: Text { text: "変更はありません"; color: Theme.fg-tertiary; font-size: 12px; height: 30px; vertical-alignment: center; }
+                                for f[i] in GitState.files: Rectangle {
+                                    height: 30px;
+                                    border-radius: 6px;
+                                    background: f.selected ? Theme.selected : fa.has-hover ? Theme.hover : transparent;
+                                    fa := TouchArea { mouse-cursor: pointer; clicked => { GitState.select(i); } }
+                                    HorizontalLayout {
+                                        padding-left: 6px;
+                                        padding-right: 4px;
+                                        spacing: 6px;
+                                        StatusMark { code: f.status; }
+                                        Text { text: f.path; color: Theme.fg; font-size: 12px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                                        Text { text: f.stat; color: Theme.fg-tertiary; font-size: 11px; vertical-alignment: center; }
+                                        if !GitState.comparing: Rectangle {
+                                            width: sl.preferred-width + 14px;
+                                            height: 22px;
+                                            y: 4px;
+                                            border-radius: 4px;
+                                            background: sa.has-hover ? Theme.pressed : Theme.hover;
+                                            sl := Text { text: f.can-stage ? "ステージ" : "解除"; color: Theme.fg; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                                            sa := TouchArea { mouse-cursor: pointer; clicked => { GitState.toggle-stage(i); } }
+                                        }
                                     }
                                 }
                             }
                         }
+                        if !GitState.comparing: LineEdit { text <=> GitState.commit-message; }
+                        if !GitState.comparing: HorizontalLayout {
+                            spacing: 8px;
+                            alignment: end;
+                            Button { label: "すべてステージ"; clicked => { GitState.stage-all(); } }
+                            Button { label: "コミット"; primary: true; clicked => { GitState.commit(); } }
+                        }
                     }
-                    LineEdit { text <=> GitState.commit-message; }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        alignment: end;
-                        Button { label: "すべてステージ"; clicked => { GitState.stage-all(); } }
-                        Button { label: "コミット"; primary: true; clicked => { GitState.commit(); } }
-                    }
-                }
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    spacing: 6px;
-                    Text { text: GitState.diff-title; color: Theme.fg-secondary; font-size: 12px; overflow: elide; }
-                    Rectangle {
-                        vertical-stretch: 1;
-                        border-radius: 8px;
-                        background: Theme.bubble;
-                        clip: true;
-                        Flickable {
-                            content-width: dl.preferred-width + 24px;
-                            content-height: dl.preferred-height + 16px;
-                            dl := VerticalLayout {
-                                x: 12px;
-                                y: 8px;
-                                for l in GitState.diff: Text {
-                                    text: l.text;
-                                    font-family: "Consolas";
-                                    font-size: 12px;
-                                    color: l.kind == 1 ? (Theme.dark ? #3fb950 : #1a7f37)
-                                        : l.kind == 2 ? Theme.danger
-                                        : l.kind == 4 ? Theme.fg-tertiary : Theme.fg-secondary;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 6px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            height: 26px;
+                            Text { text: GitState.diff-title; color: Theme.fg-secondary; font-size: 12px; overflow: elide; vertical-alignment: center; horizontal-stretch: 1; }
+                            if GitState.diff-title != "": Button { label: "このファイルを元に戻す"; clicked => { GitState.revert-file(); } }
+                        }
+                        Rectangle {
+                            vertical-stretch: 1;
+                            border-radius: 8px;
+                            background: Theme.bubble;
+                            clip: true;
+                            Flickable {
+                                content-width: dl.preferred-width + 24px;
+                                content-height: dl.preferred-height + 16px;
+                                dl := VerticalLayout {
+                                    x: 4px;
+                                    y: 8px;
+                                    for l[i] in GitState.diff: Rectangle {
+                                        height: 18px;
+                                        background: l.selected ? Theme.selected : lh.has-hover ? Theme.hover : transparent;
+                                        lh := TouchArea { mouse-cursor: pointer; clicked => { GitState.select-line(i); } }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Rectangle {
+                                                width: 52px;
+                                                if l.head: Rectangle {
+                                                    height: 16px;
+                                                    y: 1px;
+                                                    border-radius: 4px;
+                                                    background: rb.has-hover ? Theme.pressed : Theme.hover;
+                                                    Text { text: "戻す"; color: Theme.danger; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                                                    rb := TouchArea { mouse-cursor: pointer; clicked => { GitState.revert-hunk(l.hunk); } }
+                                                }
+                                                if !l.head && l.marked: Text { text: "●"; color: Theme.accent; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                                            }
+                                            Text {
+                                                text: l.text;
+                                                font-family: "Consolas";
+                                                font-size: 12px;
+                                                vertical-alignment: center;
+                                                color: l.kind == 1 ? (Theme.dark ? #3fb950 : #1a7f37)
+                                                    : l.kind == 2 ? Theme.danger
+                                                    : l.kind == 4 ? Theme.fg-tertiary : Theme.fg-secondary;
+                                            }
+                                        }
+                                    }
                                 }
+                            }
+                        }
+                        if GitState.selected-line >= 0: HorizontalLayout {
+                            spacing: 8px;
+                            height: 28px;
+                            LineEdit { text <=> GitState.comment-text; horizontal-stretch: 1; }
+                            Button { label: "行コメントを追加"; primary: true; clicked => { GitState.add-comment(); } }
+                        }
+                        if GitState.comments.length > 0: VerticalLayout {
+                            spacing: 2px;
+                            for c[i] in GitState.comments: HorizontalLayout {
+                                spacing: 8px;
+                                height: 32px;
+                                Text { text: c.place + "  " + c.text; color: Theme.fg-secondary; font-size: 12px; overflow: elide; vertical-alignment: center; horizontal-stretch: 1; }
+                                Button { label: "削除"; clicked => { GitState.remove-comment(i); } }
+                            }
+                            HorizontalLayout {
+                                alignment: end;
+                                Button { label: "コメントをチャットに送る"; primary: true; clicked => { GitState.send-comments(); } }
                             }
                         }
                     }
                 }
             }
-            }
             if GitState.note != "": Text { text: GitState.note; color: Theme.fg-secondary; font-size: 12px; wrap: word-wrap; }
+        }
+        // Reverting cannot be undone: it is asked first.
+        if GitState.confirm-text != "": Rectangle {
+            background: #00000099;
+            border-radius: 12px;
+            TouchArea { }
+            Rectangle {
+                width: 460px;
+                height: cc.preferred-height + 32px;
+                border-radius: 12px;
+                background: Theme.composer;
+                border-width: 1px;
+                border-color: Theme.border;
+                cc := VerticalLayout {
+                    padding: 16px;
+                    spacing: 14px;
+                    Text { text: GitState.confirm-text; color: Theme.fg; font-size: 13px; wrap: word-wrap; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        Button { label: "やめる"; clicked => { GitState.cancel-confirm(); } }
+                        Button { label: GitState.confirm-label; primary: true; clicked => { GitState.confirm(); } }
+                    }
+                }
+            }
         }
     }
 }
