@@ -54,6 +54,29 @@ pub(crate) fn install(app: &AppWindow) {
         });
         extra.push(t);
     }
+    // INOCODE_GUI_TYPE=<text>: the text in the composer as if typed (the slash menu shows for "/..");
+    // INOCODE_GUI_SUBMIT=<text>: the text sent from the composer (a slash command runs).
+    if let Ok(text) = std::env::var("INOCODE_GUI_TYPE") {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 1), move || {
+            if let Some(app) = weak.upgrade() {
+                app.set_prompt(text.clone().into());
+                app.global::<AttachState>().invoke_text_changed(text.clone().into());
+            }
+        });
+        extra.push(t);
+    }
+    if let Ok(text) = std::env::var("INOCODE_GUI_SUBMIT") {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 1), move || {
+            if let Some(app) = weak.upgrade() {
+                app.invoke_submit(text.clone().into());
+            }
+        });
+        extra.push(t);
+    }
     // INOCODE_GUI_THINK=1: thinking and search rows (running, done, with a body), through the
     // same functions the server's items go through; INOCODE_GUI_THINK=busy also shows the turn running.
     if let Ok(mode) = std::env::var("INOCODE_GUI_THINK") {

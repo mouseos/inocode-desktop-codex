@@ -26,7 +26,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 pub use approval::approval_info;
-pub use parse::{history_from_thread, parse_account, parse_models, parse_threads, rate_limit_text, tool_detail, tool_text, is_running, clean_title};
+pub use parse::{history_from_thread, parse_account, parse_models, parse_threads, rate_limit_text, tool_detail, tool_text, is_running, clean_title, guardian_event, shell_inner, unescape_command};
 pub use transport::{base_client_version, find_inocode, probe_models};
 pub use types::*;
 
@@ -56,6 +56,15 @@ mod tests {
         assert_eq!(tool_detail(&out), "$ dir\na\nb");
         let c = json!({"type":"collabAgentToolCall","tool":"wait","status":"inProgress","agentsStates":{"x":{"status":"running","message":null}}});
         assert_eq!(tool_text(&c).unwrap(), "待機中 (1 件実行中)");
+    }
+
+    #[test]
+    fn a_shell_launch_line_shows_the_command_inside() {
+        let c = r#""C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command 'Get-ChildItem -LiteralPath C:\\x'"#;
+        assert_eq!(shell_inner(c), r"Get-ChildItem -LiteralPath C:\x");
+        assert_eq!(shell_inner(r#"bash -lc "ls -la""#), "ls -la");
+        assert_eq!(shell_inner("cargo build"), "cargo build");
+        assert_eq!(unescape_command(r"\\server\\share a\\b"), r"\\server\share a\b");
     }
 
     #[test]

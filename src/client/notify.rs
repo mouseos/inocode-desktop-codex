@@ -224,9 +224,13 @@ impl<F: Fn(Event)> Session<'_, F> {
             "item/autoApprovalReview/completed" => {
                 let status = params.pointer("/review/status").and_then(Value::as_str).unwrap_or("");
                 if matches!(status, "denied" | "timedOut") {
+                    self.denials.push(params.clone());
+                    if self.denials.len() > 20 {
+                        self.denials.remove(0);
+                    }
                     let id = params.get("reviewId").and_then(Value::as_str).unwrap_or("");
                     let why = params.pointer("/review/rationale").and_then(Value::as_str).unwrap_or("");
-                    let text = if status == "denied" { "自動承認レビュー: 拒否されました" } else { "自動承認レビュー: 時間切れでした" };
+                    let text = if status == "denied" { "自動承認レビュー: 拒否されました(/approve で承認)" } else { "自動承認レビュー: 時間切れでした" };
                     (self.on_event)(Event::Note { id: format!("guardian:{id}"), text: text.into(), detail: why.to_string() });
                 }
             }

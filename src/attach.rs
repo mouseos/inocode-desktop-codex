@@ -188,7 +188,24 @@ pub(crate) fn menu_pick(app: &AppWindow, action: &str) -> bool {
     true
 }
 
+/// Files dropped on the window go with the next message (the same as the "+" menu's files).
+/// Slint's winit backend leaves the drop to us: the window's own events carry it.
+fn install_drop(app: &AppWindow) {
+    use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
+    let weak = app.as_weak();
+    app.window().on_winit_window_event(move |_, event| {
+        if let winit::event::WindowEvent::DroppedFile(path) = event {
+            if let Some(app) = weak.upgrade() {
+                attach_file(&app, path);
+            }
+        }
+        EventResult::Propagate
+    });
+}
+
 pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
+    install_drop(app);
+    crate::chat_cmds::register(app, handle);
     HANDLE.with(|c| *c.borrow_mut() = Some(handle.clone()));
     let weak = app.as_weak();
     app.global::<AttachState>().on_open_plus(move |x, y| {

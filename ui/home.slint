@@ -1,7 +1,7 @@
 import { Theme } from "theme.slint";
 import { Icon, Glyph } from "icons.slint";
 import { IconButton, Chip, SelectChip } from "widgets.slint";
-import { IntelligenceMenu, PermMenu, LocationRow, IntelligenceState, PermState, ProjectState } from "pickers.slint";
+import { TriggerChip, IntelligenceMenu, PermMenu, LocationRow, IntelligenceState, PermState, ProjectState } from "pickers.slint";
 import { AppState, Message, Approval } from "state.slint";
 import { MessageActions } from "chat_actions.slint";
 import { ToolRow, Pulse } from "chat_items.slint";
@@ -261,6 +261,13 @@ component Composer inherits VerticalLayout {
                         y: 1px;
                         state: root.perm;
                         pick(i) => { root.pick-perm(i); }
+                    }
+                    if AppState.plan-mode: TriggerChip {
+                        y: 1px;
+                        label: "プラン";
+                        glyph: "";
+                        tint: Theme.accent;
+                        clicked => { AppState.toggle-plan(); }
                     }
                     if GitState.branch != "": GitChip { y: 1px; }
                     Rectangle { horizontal-stretch: 1; }

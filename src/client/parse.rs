@@ -31,7 +31,8 @@ pub fn tool_text(item: &Value) -> Option<String> {
     let suffix = if status.is_empty() { String::new() } else { format!(" — {status}") };
     match item.get("type").and_then(Value::as_str)? {
         "commandExecution" => {
-            let cmd = item.get("command").and_then(Value::as_str).unwrap_or("");
+            let inner = shell_inner(item.get("command").and_then(Value::as_str).unwrap_or(""));
+            let cmd = inner.as_str();
             let exit = item
                 .get("exitCode")
                 .and_then(Value::as_i64)
@@ -140,6 +141,50 @@ pub fn tool_text(item: &Value) -> Option<String> {
     }
 }
 
+fn snake(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        if c.is_uppercase() {
+            out.push('_');
+            out.extend(c.to_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// The notification of a refused review as the event the server wants back (the same fields in
+/// snake_case: the review's own, and its action).
+pub fn guardian_event(p: &Value) -> Value {
+    fn conv(v: &Value, key: &str) -> Value {
+        match v {
+            Value::Object(m) => Value::Object(m.iter().map(|(k, x)| (snake(k), conv(x, k))).collect()),
+            Value::Array(a) => Value::Array(a.iter().map(|x| conv(x, key)).collect()),
+            Value::String(s) if matches!(key, "type" | "source" | "status" | "decisionSource" | "riskLevel" | "userAuthorization") => Value::String(snake(s)),
+            other => other.clone(),
+        }
+    }
+    let review = p.get("review").unwrap_or(&Value::Null);
+    let mut e = json!({
+        "id": p.get("reviewId"),
+        "turn_id": p.get("turnId"),
+        "started_at_ms": p.get("startedAtMs"),
+        "completed_at_ms": p.get("completedAtMs"),
+        "target_item_id": p.get("targetItemId"),
+        "status": conv(review.get("status").unwrap_or(&Value::Null), "status"),
+        "risk_level": conv(review.get("riskLevel").unwrap_or(&Value::Null), "riskLevel"),
+        "user_authorization": conv(review.get("userAuthorization").unwrap_or(&Value::Null), "userAuthorization"),
+        "rationale": review.get("rationale"),
+        "decision_source": conv(p.get("decisionSource").unwrap_or(&Value::Null), "decisionSource"),
+        "action": conv(p.get("action").unwrap_or(&Value::Null), "action"),
+    });
+    if let Some(m) = e.as_object_mut() {
+        m.retain(|_, v| !v.is_null());
+    }
+    e
+}
+
 /// The title a model made: the `title` of its JSON answer, or its first line; no quotes, at most
 /// 60 characters. None when it made nothing.
 pub fn clean_title(raw: &str) -> Option<String> {
@@ -154,6 +199,62 @@ pub fn clean_title(raw: &str) -> Option<String> {
     } else {
         Some(t.chars().take(60).collect())
     }
+}
+
+/// A command as it was typed: the escaping the server adds to backslashes is taken back (a
+/// doubled backslash that starts a word stays: a network path).
+pub fn unescape_command(cmd: &str) -> String {
+    let mut out = String::new();
+    let mut prev: Option<char> = None;
+    let mut it = cmd.chars().peekable();
+    while let Some(c) = it.next() {
+        if c == '\\' && it.peek() == Some(&'\\') && prev.map(|p| !p.is_whitespace() && p != '"' && p != '\'' && p != '\\').unwrap_or(false) {
+            it.next();
+        }
+        out.push(c);
+        prev = Some(c);
+    }
+    out
+}
+
+/// The command inside a shell's launch line ("powershell.exe -NoProfile -Command '...'", "bash -lc ...",
+/// "cmd /c ..."): what was asked to run, the way Codex Desktop and Claude Desktop show it. A line
+/// that is not such a launch stays as it is.
+pub fn shell_inner(cmd: &str) -> String {
+    let cmd = unescape_command(cmd.trim());
+    // The next word (a quoted one keeps its spaces) and what follows it.
+    fn word(s: &str) -> Option<(String, &str)> {
+        let s = s.trim_start();
+        let first = s.chars().next()?;
+        if first == '"' || first == '\'' {
+            let end = s[1..].find(first)? + 1;
+            Some((s[1..end].to_string(), &s[end + 1..]))
+        } else {
+            let end = s.find(char::is_whitespace).unwrap_or(s.len());
+            Some((s[..end].to_string(), &s[end..]))
+        }
+    }
+    let Some((exe, mut rest)) = word(&cmd) else { return cmd };
+    let base = exe.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
+    let base = base.trim_end_matches(".exe");
+    if !matches!(base, "powershell" | "pwsh" | "cmd" | "bash" | "sh" | "zsh") {
+        return cmd;
+    }
+    while let Some((w, after)) = word(rest) {
+        let l = w.to_lowercase();
+        if matches!(l.as_str(), "-command" | "-c" | "-lc" | "-cl" | "-ic" | "-ilc" | "/c" | "/k") {
+            let inner = after.trim();
+            let quoted = inner.len() >= 2
+                && ((inner.starts_with('\'') && inner.ends_with('\'')) || (inner.starts_with('"') && inner.ends_with('"')));
+            return if quoted { inner[1..inner.len() - 1].to_string() } else { inner.to_string() };
+        }
+        if !(l.starts_with('-') || l.starts_with('/')) {
+            return cmd;
+        }
+        // These flags take a value.
+        rest = if matches!(l.as_str(), "-executionpolicy" | "-windowstyle" | "-workingdirectory") { word(after).map(|x| x.1).unwrap_or(after) } else { after };
+    }
+    cmd
 }
 
 /// The code mode's `exec` (a script that calls the other tools): what it is doing.
@@ -212,11 +313,13 @@ pub fn tool_detail(item: &Value) -> String {
     let text = |k: &str| item.get(k).and_then(Value::as_str).unwrap_or("").to_string();
     match item.get("type").and_then(Value::as_str).unwrap_or("") {
         "commandExecution" => {
+            // The whole line, wrapper included, is in the body.
             let out = text("aggregatedOutput");
+            let full = unescape_command(&text("command"));
             if out.is_empty() {
-                format!("$ {}", text("command"))
+                format!("$ {full}")
             } else {
-                format!("$ {}\n{}", text("command"), out)
+                format!("$ {full}\n{out}")
             }
         }
         "fileChange" => item.get("changes").map(file_changes_diff).unwrap_or_default(),

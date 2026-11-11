@@ -113,7 +113,7 @@ component PopupSurface inherits Rectangle {
 }
 
 // Trigger chip shared by the dropdowns.
-component TriggerChip inherits Rectangle {
+export component TriggerChip inherits Rectangle {
     in property <string> label;
     in property <color> tint: Theme.fg;
     in property <string> glyph;

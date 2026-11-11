@@ -352,6 +352,9 @@ pub enum Command {
     OpenThread(String),
     Interrupt,
     /// Send a message into the running turn (turn/steer).
+    /// Approve the last action the automatic approval review refused (thread/approveGuardianDeniedAction);
+    /// the answer comes back as the rpc event "slash.approve".
+    ApproveDenied,
     /// `key` names the answer: it comes back as the rpc event "prompt.steer:<key>".
     Steer { key: String, text: String },
     /// Answers to an item/tool/requestUserInput request: (question id, answers).

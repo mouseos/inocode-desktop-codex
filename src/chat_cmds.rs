@@ -5,7 +5,8 @@ use crate::state::*;
 use crate::*;
 use serde_json::{json, Value};
 
-pub(crate) const MORE: [(&str, &str); 7] = [
+pub(crate) const MORE: [(&str, &str); 8] = [
+    ("/approve", "自動承認レビューが拒否した操作を承認する"),
     ("/goal", "このスレッドの目標(続けて文を書くと設定。pause / resume / clear)"),
     ("/model", "モデルを選ぶ"),
     ("/reasoning", "思考量を選ぶ"),
@@ -14,6 +15,17 @@ pub(crate) const MORE: [(&str, &str); 7] = [
     ("/mcp", "MCP サーバーの状態"),
     ("/usage", "使用量の上限"),
 ];
+
+/// The chip of the composer turns plan mode off.
+pub(crate) fn register(app: &AppWindow, h: &std::rc::Rc<client::Handle>) {
+    let weak = app.as_weak();
+    let h = h.clone();
+    app.global::<AppState>().on_toggle_plan(move || {
+        let Some(app) = weak.upgrade() else { return };
+        change(&app, &h, |st| st.settings.plan_mode = false);
+        app.global::<AppState>().set_plan_mode(false);
+    });
+}
 
 fn say(app: &AppWindow, id: &str, text: &str, detail: &str) {
     crate::view::messages_with(app, |m| crate::view::upsert_tool(m, id, text, Some(detail)));
@@ -105,6 +117,7 @@ pub(crate) fn run(app: &AppWindow, h: &client::Handle, cmd: &str, arg: &str) -> 
                 _ => !arg.is_empty() || !STATE.with(|s| s.borrow().settings.plan_mode),
             };
             change(app, h, |st| st.settings.plan_mode = on);
+            app.global::<AppState>().set_plan_mode(on);
             say(app, "slash:plan", if on { "プランモード: オン" } else { "プランモード: オフ(実行します)" }, "");
             if on && !arg.is_empty() && arg_l != "on" {
                 h.send(Command::Prompt(arg.to_string()));
@@ -121,6 +134,10 @@ pub(crate) fn run(app: &AppWindow, h: &client::Handle, cmd: &str, arg: &str) -> 
                 "resume" => rpc("slash.goal.set", "thread/goal/set", json!({ "threadId": t, "origin": "user", "status": "active" })),
                 _ => rpc("slash.goal.set", "thread/goal/set", json!({ "threadId": t, "origin": "user", "objective": arg, "status": "active" })),
             }
+            true
+        }
+        "/approve" => {
+            h.send(Command::ApproveDenied);
             true
         }
         "/mcp" => {
@@ -165,6 +182,8 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
         }
         ("slash.goal.clear", Ok(_)) => say(app, "slash:goal", "目標を消しました", ""),
         ("slash.goal" | "slash.goal.set" | "slash.goal.clear", Err(e)) => say(app, "slash:goal", &format!("目標を扱えませんでした: {e}"), ""),
+        ("slash.approve", Ok(_)) => say(app, "slash:approve", "拒否された操作を承認しました", ""),
+        ("slash.approve", Err(e)) => say(app, "slash:approve", &format!("承認できませんでした: {e}"), ""),
         ("slash.usage", Ok(v)) => {
             let text = client::rate_limit_text(v.get("rateLimits").unwrap_or(&Value::Null)).unwrap_or_else(|| "使用量の情報がありません".to_string());
             say(app, "slash:usage", "使用量", &text);

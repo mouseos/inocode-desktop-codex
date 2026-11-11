@@ -68,6 +68,9 @@ export global AppState {
     in property <[Approval]> approvals;
     in property <[ProjectItem]> projects;
     in property <bool> busy: false;
+    // Plan mode is on: the composer shows it, and a click turns it off
+    in property <bool> plan-mode: false;
+    callback toggle-plan;
     in property <string> status: "接続中…";
     // 0 info, 1 ok, 2 warning, 3 error
     in property <int> status-level: 0;

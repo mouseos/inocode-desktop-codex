@@ -134,6 +134,8 @@ pub(super) struct Session<'a, F: Fn(Event)> {
     /// Threads a title was asked for in this connection.
     pub(super) titled: std::collections::HashSet<String>,
     pub(super) title: Option<TitleJob>,
+    /// The refusals of the automatic approval review (notification params), newest last.
+    pub(super) denials: Vec<Value>,
 }
 
 /// A title being made by a short-lived thread of a light model (Codex Desktop: generateTitle).
@@ -174,6 +176,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
             untitled: None,
             titled: Default::default(),
             title: None,
+            denials: Vec::new(),
         }
     }
 
@@ -358,6 +361,17 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                         )?;
                     }
                     _ => (self.on_event)(Event::Rpc { tag, result: Err("実行中のターンがありません".into()) }),
+                }
+            }
+            Command::ApproveDenied => {
+                let tag = "slash.approve".to_string();
+                match (self.active_thread.clone(), self.denials.pop()) {
+                    (Some(tid), Some(p)) => {
+                        let id = self.next_id;
+                        self.rpc_tags.insert(id, tag);
+                        self.request("thread/approveGuardianDeniedAction", json!({ "threadId": tid, "event": guardian_event(&p) }), Pending::Other)?;
+                    }
+                    _ => (self.on_event)(Event::Rpc { tag, result: Err("承認できる拒否はありません".into()) }),
                 }
             }
             Command::Answer { key, answers } => {
