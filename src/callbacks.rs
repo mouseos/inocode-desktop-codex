@@ -19,6 +19,7 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         // "/compact" and the like run a command instead of sending text.
         if crate::attach::try_slash(&app, &h, &text) {
             app.set_prompt("".into());
+            crate::attach::clear_suggestions(&app);
             return;
         }
         if !app.global::<AppState>().get_busy() {
@@ -31,8 +32,12 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
             selected_model(&st, &visible).is_none()
         });
         if missing {
+            // Not silent: the text stays in the composer, and the chat says why nothing was sent.
+            crate::view::messages_with(&app, |m| crate::view::upsert_tool(m, "no-model", "モデルを選んでください", None));
+            app.invoke_scroll_bottom();
             return;
         }
+        crate::attach::clear_suggestions(&app);
         // The replies that are ready go in front of the text, one line each.
         let text = crate::reply::compose(&app, text);
         // A message queued behind a running turn shows in the chat when it starts.

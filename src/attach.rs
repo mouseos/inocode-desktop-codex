@@ -82,6 +82,7 @@ fn refresh_chips(app: &AppWindow) {
 fn set_suggestions(app: &AppWindow, kind: &str, rows: Vec<SuggestRow>) {
     let s = app.global::<AttachState>();
     s.set_suggest_kind(kind.into());
+    s.set_suggest_index(0);
     s.set_suggestions(ModelRc::from(Rc::new(VecModel::from(rows))));
 }
 
@@ -272,7 +273,7 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         if let Some(rest) = id.strip_prefix("slash:") {
             // A command that needs an argument waits for it; the others are sent at once.
             let cmd = rest.to_string();
-            if cmd == "/rename" {
+            if matches!(cmd.as_str(), "/rename" | "/model" | "/reasoning" | "/speed" | "/goal") {
                 app.set_prompt(format!("{cmd} ").into());
             } else {
                 app.set_prompt("".into());
@@ -291,6 +292,11 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
             set_suggestions(&app, "", Vec::new());
         }
     });
+}
+
+/// Close the suggestions (a command was run, or a message sent).
+pub(crate) fn clear_suggestions(app: &AppWindow) {
+    set_suggestions(app, "", Vec::new());
 }
 
 /// The composer text changed: show the @ file suggestions or the slash commands.

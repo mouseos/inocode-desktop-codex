@@ -197,6 +197,25 @@ component Composer inherits VerticalLayout {
 
         FocusScope {
             capture-key-pressed(event) => {
+                // The suggestions above the composer: the arrows choose, Enter and Tab take, Esc closes.
+                if (AttachState.suggestions.length > 0 && input.preedit-text == "") {
+                    if (event.text == Key.DownArrow) {
+                        AttachState.suggest-index = min(AttachState.suggest-index + 1, AttachState.suggestions.length - 1);
+                        return accept;
+                    }
+                    if (event.text == Key.UpArrow) {
+                        AttachState.suggest-index = max(AttachState.suggest-index - 1, 0);
+                        return accept;
+                    }
+                    if ((event.text == Key.Return && !event.modifiers.shift) || event.text == Key.Tab) {
+                        AttachState.pick-suggestion(AttachState.suggestions[min(AttachState.suggest-index, AttachState.suggestions.length - 1)].id);
+                        return accept;
+                    }
+                    if (event.text == Key.Escape) {
+                        AttachState.text-changed(" ");
+                        return accept;
+                    }
+                }
                 if (event.text == Key.Return && !event.modifiers.shift && root.text != "" && input.preedit-text == "") {
                     root.submit(root.text);
                     return accept;
@@ -560,7 +579,12 @@ export component Home inherits Rectangle {
                 if PromptState.question-open: QuestionCard { max-width: Theme.composer-max-width; }
                 if PromptState.banner-level != 0: ErrorBanner { max-width: Theme.composer-max-width; }
                 if PromptState.queue.length > 0: QueueList { max-width: Theme.composer-max-width; }
-                if AttachState.suggestions.length > 0: SuggestList { max-width: Theme.composer-max-width; }
+                // Zero height: the list opens upward over the chat, the composer stays where it is.
+                if AttachState.suggestions.length > 0: Rectangle {
+                    max-width: Theme.composer-max-width;
+                    height: 0px;
+                    SuggestList { y: -self.height - 4px; width: parent.width; }
+                }
 
                 if !root.chat-active: HorizontalLayout {
                     alignment: center;

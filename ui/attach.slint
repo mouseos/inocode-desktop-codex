@@ -27,6 +27,8 @@ export global AttachState {
     // Suggestions above the composer: "mention" (@) or "slash" (/).
     in property <string> suggest-kind;
     in property <[SuggestRow]> suggestions;
+    // The row of the suggestions the arrow keys are on (Enter takes it).
+    in-out property <int> suggest-index: 0;
 
     // The composer text changed (for the @ and / popups).
     callback text-changed(string);
@@ -138,17 +140,31 @@ export component ImagePreview inherits Rectangle {
 }
 
 export component SuggestList inherits Rectangle {
-    height: col.preferred-height + 8px;
+    // At most 8 rows, then it scrolls; the list opens upward over the chat and does not push the
+    // composer.
+    property <int> idx: AttachState.suggest-index;
+    height: min(col.preferred-height + 8px, 8 * 28px + 8px);
     border-radius: 10px;
     background: Theme.composer;
     border-width: 1px;
     border-color: Theme.border;
-    col := VerticalLayout {
+    clip: true;
+    changed idx => {
+        // keep the row in view
+        if (root.idx * 28px + flick.viewport-y < 0px) {
+            flick.viewport-y = -(root.idx * 28px);
+        } else if ((root.idx + 1) * 28px + flick.viewport-y > root.height - 8px) {
+            flick.viewport-y = -((root.idx + 1) * 28px - (root.height - 8px));
+        }
+    }
+    flick := Flickable {
+      viewport-height: col.preferred-height + 8px;
+      col := VerticalLayout {
         padding: 4px;
-        for s in AttachState.suggestions: Rectangle {
+        for s[i] in AttachState.suggestions: Rectangle {
             height: 28px;
             border-radius: 6px;
-            background: sa.has-hover ? Theme.hover : transparent;
+            background: (sa.has-hover || i == AttachState.suggest-index) ? Theme.hover : transparent;
             HorizontalLayout {
                 padding-left: 8px;
                 padding-right: 8px;
@@ -171,5 +187,6 @@ export component SuggestList inherits Rectangle {
             }
             sa := TouchArea { mouse-cursor: pointer; clicked => { AttachState.pick-suggestion(s.id); } }
         }
+      }
     }
 }
