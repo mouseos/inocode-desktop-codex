@@ -492,6 +492,10 @@ pub(super) fn running_turn(thread: &Value) -> Option<String> {
 
 pub(super) fn thread_start_params(s: &Settings) -> Value {
     let mut p = json!({});
+    // INOCODE_GUI_EPHEMERAL=1 (the snapshot runs against the real home): the thread is not kept.
+    if std::env::var("INOCODE_GUI_EPHEMERAL").is_ok() {
+        p["ephemeral"] = json!(true);
+    }
     let (policy, sandbox, reviewer) = s.permission(false);
     if let Some(v) = policy {
         p["approvalPolicy"] = json!(v);

@@ -341,6 +341,10 @@ pub(crate) fn install(app: &AppWindow) {
     // seconds after the start.
     let live = std::env::var("INOCODE_GUI_PROMPT").ok().filter(|p| !p.is_empty());
     if let Some(text) = live.clone() {
+        // Several steps: INOCODE_GUI_PROMPT="/plan on ;; the request ;; /plan off ;; go on". Each is sent
+        // the way a typed message is, the next one when no turn is running.
+        let mut steps: std::collections::VecDeque<String> = text.split(" ;; ").map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        let mut since_send = 0u32;
         let weak = app.as_weak();
         let model = std::env::var("INOCODE_GUI_MODEL").ok().filter(|m| !m.is_empty());
         let started = std::time::Instant::now();
@@ -349,7 +353,19 @@ pub(crate) fn install(app: &AppWindow) {
         let t = slint::Timer::default();
         t.start(slint::TimerMode::Repeated, Duration::from_millis(500), move || {
             let Some(app) = weak.upgrade() else { return };
-            if stage >= 2 || started.elapsed() < Duration::from_secs(2) {
+            if stage >= 2 {
+                // The next step, once the turn of the last one is over (not at once: the turn
+                // needs a moment to start).
+                since_send += 1;
+                if since_send >= 6 && !steps.is_empty() && !app.global::<AppState>().get_busy() {
+                    if let Some(next) = steps.pop_front() {
+                        app.invoke_submit(next.into());
+                        since_send = 0;
+                    }
+                }
+                return;
+            }
+            if started.elapsed() < Duration::from_secs(2) {
                 return;
             }
             let ready = STATE.with(|s| {
@@ -377,9 +393,12 @@ pub(crate) fn install(app: &AppWindow) {
             });
             if (chosen && waited >= 4) || waited > 40 {
                 if chosen {
-                    app.invoke_submit(text.clone().into());
+                    if let Some(first) = steps.pop_front() {
+                        app.invoke_submit(first.into());
+                    }
                 }
                 stage = 2;
+                since_send = 0;
             }
         });
         extra.push(t);

@@ -29,6 +29,10 @@ pub(crate) fn on_models(app: &AppWindow) {
 /// Ask the lists of the providers that have an account (the models of one provider are only on
 /// its own list): the accounts first, then model/list for each.
 pub(crate) fn refresh_providers() {
+    // INOCODE_GUI_NO_ACCOUNTS=1 (the snapshot runs against the real home): no accounts calls.
+    if std::env::var("INOCODE_GUI_NO_ACCOUNTS").is_ok() {
+        return;
+    }
     if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
         h.send(Command::Rpc { tag: "model.accounts".into(), method: "inocode/accounts/list".into(), params: json!({ "refresh": false }) });
     }
