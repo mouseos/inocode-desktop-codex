@@ -46,6 +46,8 @@ pub(crate) struct State {
     pub(crate) enrich_credits: Vec<String>,
     pub(crate) use_map: Vec<String>,
     pub(crate) use_filter: Option<String>,
+    /// How many times plan mode was switched (each switch has its own row in the chat).
+    pub(crate) plan_switches: u32,
     /// A thread was just opened: the model it reports is the one to show (and use).
     pub(crate) sync_model: bool,
     /// The open thread is an existing one: what it has recorded is the choice, even none.

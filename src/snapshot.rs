@@ -340,6 +340,10 @@ pub(crate) fn install(app: &AppWindow) {
     // <file>-1.png, <file>-2.png ... on the way. The last picture is written INOCODE_GUI_SNAPSHOT_DELAY
     // seconds after the start.
     let live = std::env::var("INOCODE_GUI_PROMPT").ok().filter(|p| !p.is_empty());
+    // INOCODE_GUI_TOOLS_OPEN=1: the rows of tools and thinking open (to read what they hold).
+    if std::env::var("INOCODE_GUI_TOOLS_OPEN").is_ok() {
+        app.global::<AppState>().set_tools_open(true);
+    }
     if let Some(text) = live.clone() {
         // Several steps: INOCODE_GUI_PROMPT="/plan on ;; the request ;; /plan off ;; go on". Each is sent
         // the way a typed message is, the next one when no turn is running.

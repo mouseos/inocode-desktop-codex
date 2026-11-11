@@ -118,7 +118,9 @@ pub(crate) fn run(app: &AppWindow, h: &client::Handle, cmd: &str, arg: &str) -> 
             };
             change(app, h, |st| st.settings.plan_mode = on);
             app.global::<AppState>().set_plan_mode(on);
-            say(app, "slash:plan", if on { "プランモード: オン" } else { "プランモード: オフ(実行します)" }, "");
+            // One row for each switch: the "on" row stays when it is switched off.
+            let n = STATE.with(|s| { let mut st = s.borrow_mut(); st.plan_switches += 1; st.plan_switches });
+            say(app, &format!("slash:plan:{n}"), if on { "プランモード: オン" } else { "プランモード: オフ(実行します)" }, "");
             if on && !arg.is_empty() && arg_l != "on" {
                 h.send(Command::Prompt(arg.to_string()));
             }
