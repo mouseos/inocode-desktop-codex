@@ -100,3 +100,4 @@ fn main() {
     // Closing the window: stop the client so the app-server child it started exits too.
     handle.shutdown();
 }
+mod os_notify;

@@ -5,7 +5,8 @@ use crate::state::*;
 use crate::*;
 use serde_json::{json, Value};
 
-pub(crate) const MORE: [(&str, &str); 6] = [
+pub(crate) const MORE: [(&str, &str); 7] = [
+    ("/goal", "このスレッドの目標(続けて文を書くと設定。pause / resume / clear)"),
     ("/model", "モデルを選ぶ"),
     ("/reasoning", "思考量を選ぶ"),
     ("/speed", "速度を選ぶ(fast / standard)"),
@@ -110,6 +111,18 @@ pub(crate) fn run(app: &AppWindow, h: &client::Handle, cmd: &str, arg: &str) -> 
             }
             true
         }
+        "/goal" => {
+            let Some(t) = STATE.with(|s| Some(s.borrow().active.clone()).filter(|a| !a.is_empty())) else { return true };
+            let rpc = |tag: &str, method: &str, params: Value| h.send(Command::Rpc { tag: tag.into(), method: method.into(), params });
+            match arg_l.as_str() {
+                "" => rpc("slash.goal", "thread/goal/get", json!({ "threadId": t })),
+                "clear" => rpc("slash.goal.clear", "thread/goal/clear", json!({ "threadId": t, "origin": "user" })),
+                "pause" => rpc("slash.goal.set", "thread/goal/set", json!({ "threadId": t, "origin": "user", "status": "paused" })),
+                "resume" => rpc("slash.goal.set", "thread/goal/set", json!({ "threadId": t, "origin": "user", "status": "active" })),
+                _ => rpc("slash.goal.set", "thread/goal/set", json!({ "threadId": t, "origin": "user", "objective": arg, "status": "active" })),
+            }
+            true
+        }
         "/mcp" => {
             h.send(Command::Rpc { tag: "slash.mcp".into(), method: "mcpServerStatus/list".into(), params: json!({}) });
             true
@@ -137,6 +150,21 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
                 .collect();
             say(app, "slash:mcp", &format!("MCP サーバー {} 件", rows.len()), &lines.join("\n"));
         }
+        ("slash.goal" | "slash.goal.set", Ok(v)) => {
+            let g = v.get("goal").filter(|g| !g.is_null());
+            match g {
+                Some(g) => {
+                    let s = |k: &str| g.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+                    let n = |k: &str| g.get(k).and_then(Value::as_i64).unwrap_or(0);
+                    let detail = format!("{}
+使用トークン {} / 経過 {} 秒", s("objective"), n("tokensUsed"), n("timeUsedSeconds"));
+                    say(app, "slash:goal", &format!("目標: {}", s("status")), &detail);
+                }
+                None => say(app, "slash:goal", "目標はありません", ""),
+            }
+        }
+        ("slash.goal.clear", Ok(_)) => say(app, "slash:goal", "目標を消しました", ""),
+        ("slash.goal" | "slash.goal.set" | "slash.goal.clear", Err(e)) => say(app, "slash:goal", &format!("目標を扱えませんでした: {e}"), ""),
         ("slash.usage", Ok(v)) => {
             let text = client::rate_limit_text(v.get("rateLimits").unwrap_or(&Value::Null)).unwrap_or_else(|| "使用量の情報がありません".to_string());
             say(app, "slash:usage", "使用量", &text);

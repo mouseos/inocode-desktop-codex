@@ -258,3 +258,16 @@ export component AppWindow inherits Window {
         height: root.height;
     }
 }
+        // New chat, back and forward (Codex Desktop's newThread and navigation commands).
+        if e.modifiers.control && !e.modifiers.shift && !e.modifiers.alt && e.text.to-lowercase() == "n" {
+            AppState.new-chat();
+            return accept;
+        }
+        if e.modifiers.control && !e.modifiers.shift && !e.modifiers.alt && e.text == "[" && NavState.can-back {
+            NavState.back();
+            return accept;
+        }
+        if e.modifiers.control && !e.modifiers.shift && !e.modifiers.alt && e.text == "]" && NavState.can-forward {
+            NavState.forward();
+            return accept;
+        }

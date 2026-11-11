@@ -68,6 +68,9 @@ pub fn tool_text(item: &Value) -> Option<String> {
                 _ => "思考しました".to_string(),
             })
         }
+        // /review: the start (what is reviewed) and the result (the findings, as the body).
+        "enteredReviewMode" => Some("レビューを開始しました".to_string()),
+        "exitedReviewMode" => Some("レビューの結果".to_string()),
         "plan" => Some("プラン".to_string()),
         "contextCompaction" => Some("コンテキストを圧縮しました".to_string()),
         // Claude: "Searching web" / "Searched web" / "Failed to search web" + the query; Codex:
@@ -264,6 +267,7 @@ pub fn tool_detail(item: &Value) -> String {
             out.join("\n\n")
         }
         "plan" => text("text"),
+        "enteredReviewMode" | "exitedReviewMode" => text("review"),
         "collabAgentToolCall" => {
             let mut out = text("prompt");
             if let Some(m) = item.get("agentsStates").and_then(Value::as_object) {

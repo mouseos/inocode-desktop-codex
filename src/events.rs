@@ -227,6 +227,9 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
             rebuild_projects(app, &st);
             crate::panel_data::refresh_terminals(&st.active.clone());
             crate::prompts::on_turn_done(app, &st.active.clone(), interrupted);
+            if !interrupted {
+                crate::os_notify::notify("InoCode", &format!("{} が完了しました", app.global::<AppState>().get_session_title()));
+            }
             // The turn's plan and file changes end up at the bottom, and the next turn starts new rows.
             messages_with(app, |model| {
                 for key in ["turn-diff", "turn-plan"] {
@@ -245,6 +248,7 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
             }
         }
         Event::Approval(info) => {
+            crate::os_notify::notify("InoCode", "承認が必要です");
             let mut st = state.borrow_mut();
             crate::coding::push_pending(&mut st.pending, &info.thread, crate::coding::to_approval(&info));
             crate::coding::render_approvals(app, &st);

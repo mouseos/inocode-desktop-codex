@@ -220,6 +220,16 @@ impl<F: Fn(Event)> Session<'_, F> {
                     detail: detail.trim().to_string(),
                 });
             }
+            // The automatic approval review (代わりに承認) refused an action: say so, and why.
+            "item/autoApprovalReview/completed" => {
+                let status = params.pointer("/review/status").and_then(Value::as_str).unwrap_or("");
+                if matches!(status, "denied" | "timedOut") {
+                    let id = params.get("reviewId").and_then(Value::as_str).unwrap_or("");
+                    let why = params.pointer("/review/rationale").and_then(Value::as_str).unwrap_or("");
+                    let text = if status == "denied" { "自動承認レビュー: 拒否されました" } else { "自動承認レビュー: 時間切れでした" };
+                    (self.on_event)(Event::Note { id: format!("guardian:{id}"), text: text.into(), detail: why.to_string() });
+                }
+            }
             "warning" => {
                 let message = params.get("message").and_then(Value::as_str).unwrap_or("");
                 if !message.is_empty() {
@@ -303,7 +313,7 @@ impl<F: Fn(Event)> Session<'_, F> {
                 }
             }
             // Session list changes (name, status, read state, archive, section) reach the sidebar.
-            m if m.starts_with("inocode/") || m.starts_with("windowsSandbox/") || m.starts_with("thread/") || m.starts_with("remoteControl/") || m.starts_with("mcpServer/") => {
+            m if m.starts_with("inocode/") || m.starts_with("windowsSandbox/") || m.starts_with("thread/") || m.starts_with("remoteControl/") || m.starts_with("mcpServer/") || m.starts_with("process/") || m.starts_with("fs/") || m.starts_with("fuzzyFileSearch/") => {
                 (self.on_event)(Event::Notify { method: m.to_string(), params: params.clone() });
             }
             _ => {}
