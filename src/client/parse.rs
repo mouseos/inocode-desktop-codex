@@ -84,15 +84,21 @@ pub fn tool_text(item: &Value) -> Option<String> {
             let done = failed || given("results") || given("action") || !q.is_empty();
             let act = |k: &str| item.pointer(&format!("/action/{k}")).and_then(Value::as_str).unwrap_or("");
             let with = |label: &str, what: &str| if what.is_empty() { label.to_string() } else { format!("{label}: {what}") };
+            // What is searched: the item's `tool` (an older server has none: the web).
+            let target = match item.get("tool").and_then(Value::as_str) {
+                Some("shopping_search") => "ショッピング",
+                Some("media_search") => "メディア",
+                _ => "ウェブ",
+            };
             Some(if !done {
-                "ウェブを検索しています…".to_string()
+                format!("{target}を検索しています…")
             } else if failed {
-                with("ウェブ検索に失敗しました", q)
+                with(&format!("{target}の検索に失敗しました"), q)
             } else {
                 match item.pointer("/action/type").and_then(Value::as_str) {
                     Some("openPage") => with("ページを開きました", act("url")),
                     Some("findInPage") => with("ページ内を検索しました", act("pattern")),
-                    _ => with("ウェブを検索しました", q),
+                    _ => with(&format!("{target}を検索しました"), q),
                 }
             })
         }
@@ -221,6 +227,9 @@ pub fn tool_detail(item: &Value) -> String {
         }
         "webSearch" => {
             let mut out: Vec<String> = Vec::new();
+            if let Some(p) = item.get("provider").and_then(Value::as_str).filter(|p| !p.is_empty()) {
+                out.push(format!("提供元: {p}"));
+            }
             for r in item.get("results").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]) {
                 let s = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or("");
                 let mut block = s("title").to_string();
