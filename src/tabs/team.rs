@@ -27,6 +27,22 @@ thread_local! {
     static DATA: RefCell<Data> = RefCell::new(Data::default());
 }
 
+/// "Euclid · gpt-5.6-luna · 高": the name the agent was given, its model and its reasoning level.
+/// What the server did not send is left out; without a nickname the role name stands.
+pub fn agent_title(a: &Value) -> String {
+    let s = |k: &str| a.get(k).and_then(Value::as_str).unwrap_or("");
+    let mut parts: Vec<String> = Vec::new();
+    parts.push(if s("nickname").is_empty() { s("name").to_string() } else { s("nickname").to_string() });
+    if !s("model").is_empty() {
+        parts.push(s("model").to_string());
+    }
+    if !s("reasoningEffort").is_empty() {
+        parts.push(crate::state::effort_label(s("reasoningEffort")));
+    }
+    parts.retain(|p| !p.is_empty());
+    parts.join(" · ")
+}
+
 /// The agents as the server sent them (for the graph).
 pub fn agents_snapshot() -> Vec<Value> {
     DATA.with(|d| d.borrow().agents.clone())
@@ -188,7 +204,7 @@ fn render(app: &AppWindow) {
                     .unwrap_or_default();
                 let started = parse_rfc3339(s("startedAt")).map(|t| ago(now - t)).unwrap_or_default();
                 AgentRow {
-                    name: s("name").into(),
+                    name: agent_title(a).into(),
                     paths: paths.into(),
                     state: s("state").into(),
                     state_label: state_label(s("state")).into(),

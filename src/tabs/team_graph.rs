@@ -220,10 +220,11 @@ pub fn build(agent_values: &[Value], messages: &[Value], now: i64) -> Graph {
             let a = &agents[i];
             let name = if s(a.v, "nickname").is_empty() { s(a.v, "name") } else { s(a.v, "nickname") };
             let state = s(a.v, "state");
+            let title = super::team::agent_title(a.v);
             let tokens = a.v.get("tokens").and_then(Value::as_i64).map(|t| format!("  {t} トークン")).unwrap_or_default();
             nodes.push(Node {
                 label: name.to_string(),
-                detail: format!("{}  {}{}", s(a.v, "name"), state_label(state), tokens),
+                detail: format!("{}  {}{}", title, state_label(state), tokens),
                 state: state.to_string(),
                 main: false,
                 x: x[i],
