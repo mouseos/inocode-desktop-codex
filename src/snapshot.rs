@@ -77,6 +77,38 @@ pub(crate) fn install(app: &AppWindow) {
         });
         extra.push(t);
     }
+    // INOCODE_GUI_LONG=<turns>: a long conversation (long answers with a table, code, lists, many
+    // command rows) put in as the history of a thread, to look for rows that overlap or are cut off.
+    if let Some(n) = std::env::var("INOCODE_GUI_LONG").ok().and_then(|v| v.parse::<usize>().ok()) {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 1), move || {
+            let Some(app) = weak.upgrade() else { return };
+            let mut rows: Vec<client::Msg> = Vec::new();
+            let mut push = |role: &str, text: String, detail: String| {
+                let id = format!("m{}", rows.len());
+                rows.push(client::Msg { id, role: role.into(), text, detail, turn_id: String::new(), item_index: 0 });
+            };
+            for i in 0..n {
+                push("user", format!("{}番目の質問です。{}", i + 1, if i % 4 == 0 { "とても長い依頼の文章が、折り返して何行にもなるときの高さを見るために、同じ文を何度も書きます。".repeat(6) } else { String::new() }), String::new());
+                push("tool", "思考しました".into(), "調べる順番を考えた。".into());
+                push(
+                    "tool",
+                    format!("実行: Get-ChildItem -LiteralPath 'D:\\work\\software\\OSS\\ino-code\\gui\\inocode-desktop\\src' -Recurse | Select-String 'pattern{i}' — 完了"),
+                    format!("$ Get-ChildItem ...\n{}", "src\\main.rs:12: match\n".repeat(30)),
+                );
+                let table = "| 項目 | 値 | 備考 |\n|---|---|---|\n| 速度 | 120 トークン/秒 | 実測 |\n| 価格 | $2 / $10 | 参考 |\n";
+                let code = "```rust\nfn main() {\n    let long_variable_name = some_function_with_a_long_name(argument_one, argument_two, argument_three);\n    println!(\"{long_variable_name}\");\n}\n```\n";
+                push(
+                    "assistant",
+                    format!("## 答え {}\n\n長い段落です。{}\n\n- 箇条書きの一つ目\n- 箇条書きの二つ目\n\n{table}\n{code}\n最後の一文。", i + 1, "文が続きます。".repeat(20 + (i % 5) * 10)),
+                    String::new(),
+                );
+            }
+            STATE.with(|s| crate::events::apply(&app, s, client::Event::History(rows)));
+        });
+        extra.push(t);
+    }
     // INOCODE_GUI_THINK=1: thinking and search rows (running, done, with a body), through the
     // same functions the server's items go through; INOCODE_GUI_THINK=busy also shows the turn running.
     if let Ok(mode) = std::env::var("INOCODE_GUI_THINK") {
@@ -389,35 +421,3 @@ index 0000000..e69de29
 +
 +The first line of a new file.
 ";
-    // INOCODE_GUI_LONG=<turns>: a long conversation (long answers with a table, code, lists, many
-    // command rows) put in as the history of a thread, to look for rows that overlap or are cut off.
-    if let Some(n) = std::env::var("INOCODE_GUI_LONG").ok().and_then(|v| v.parse::<usize>().ok()) {
-        let weak = app.as_weak();
-        let t = slint::Timer::default();
-        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 1), move || {
-            let Some(app) = weak.upgrade() else { return };
-            let mut rows: Vec<client::Msg> = Vec::new();
-            let mut push = |role: &str, text: String, detail: String| {
-                let id = format!("m{}", rows.len());
-                rows.push(client::Msg { id, role: role.into(), text, detail, turn_id: String::new(), item_index: 0 });
-            };
-            for i in 0..n {
-                push("user", format!("{}番目の質問です。{}", i + 1, if i % 4 == 0 { "とても長い依頼の文章が、折り返して何行にもなるときの高さを見るために、同じ文を何度も書きます。".repeat(6) } else { String::new() }), String::new());
-                push("tool", "思考しました".into(), "調べる順番を考えた。".into());
-                push(
-                    "tool",
-                    format!("実行: Get-ChildItem -LiteralPath 'D:\\work\\software\\OSS\\ino-code\\gui\\inocode-desktop\\src' -Recurse | Select-String 'pattern{i}' — 完了"),
-                    format!("$ Get-ChildItem ...\n{}", "src\\main.rs:12: match\n".repeat(30)),
-                );
-                let table = "| 項目 | 値 | 備考 |\n|---|---|---|\n| 速度 | 120 トークン/秒 | 実測 |\n| 価格 | $2 / $10 | 参考 |\n";
-                let code = "```rust\nfn main() {\n    let long_variable_name = some_function_with_a_long_name(argument_one, argument_two, argument_three);\n    println!(\"{long_variable_name}\");\n}\n```\n";
-                push(
-                    "assistant",
-                    format!("## 答え {}\n\n長い段落です。{}\n\n- 箇条書きの一つ目\n- 箇条書きの二つ目\n\n{table}\n{code}\n最後の一文。", i + 1, "文が続きます。".repeat(20 + (i % 5) * 10)),
-                    String::new(),
-                );
-            }
-            STATE.with(|s| crate::events::apply(&app, s, client::Event::History(rows)));
-        });
-        extra.push(t);
-    }
