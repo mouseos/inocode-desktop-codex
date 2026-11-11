@@ -39,6 +39,25 @@ export component DiffView inherits Rectangle {
     }
 }
 
+// A dot that fades in and out: something is going on.
+export component Pulse inherits Rectangle {
+    property <bool> on: true;
+    width: 14px;
+    Timer {
+        interval: 600ms;
+        running: true;
+        triggered => { root.on = !root.on; }
+    }
+    Rectangle {
+        width: 6px;
+        height: 6px;
+        border-radius: 3px;
+        background: Theme.fg-secondary;
+        opacity: root.on ? 1.0 : 0.25;
+        animate opacity { duration: 500ms; }
+    }
+}
+
 // One tool / thinking / plan / diff row. A row with a body opens on click and shows the body
 // (command output, changed files, reasoning summary, plan steps) with a copy button.
 export component ToolRow inherits VerticalLayout {
@@ -46,6 +65,7 @@ export component ToolRow inherits VerticalLayout {
     in property <string> detail;
     in property <[DiffRow]> diff;
     in property <int> index;
+    in property <bool> running: false;
     property <bool> open: AppState.tools-open;
     property <bool> expandable: root.detail != "" || root.diff.length > 0;
     spacing: 4px;
@@ -54,6 +74,7 @@ export component ToolRow inherits VerticalLayout {
         height: 22px;
         HorizontalLayout {
             spacing: 2px;
+            if root.running: Pulse { }
             Text {
                 text: root.text;
                 color: Theme.fg-secondary;

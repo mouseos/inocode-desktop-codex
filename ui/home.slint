@@ -4,7 +4,7 @@ import { IconButton, Chip, SelectChip } from "widgets.slint";
 import { IntelligenceMenu, PermMenu, LocationRow, IntelligenceState, PermState, ProjectState } from "pickers.slint";
 import { AppState, Message, Approval } from "state.slint";
 import { MessageActions } from "chat_actions.slint";
-import { ToolRow } from "chat_items.slint";
+import { ToolRow, Pulse } from "chat_items.slint";
 import { ShortcutState } from "shortcuts.slint";
 import { MetricsState } from "metrics.slint";
 import { SettingsPageState } from "settings_page.slint";
@@ -447,7 +447,7 @@ component ChatView inherits Rectangle {
                             }
                         }
                     }
-                    if m.role == "tool": ToolRow { text: m.text; detail: m.detail; diff: m.diff; index: mi; }
+                    if m.role == "tool": ToolRow { text: m.text; detail: m.detail; diff: m.diff; running: m.running; index: mi; }
                     if m.role != "tool": ActionRow {
                         user: m.role == "user";
                         index: mi;
@@ -465,6 +465,21 @@ component ChatView inherits Rectangle {
                     }
                 }
                 Rectangle { horizontal-stretch: 1; }
+            }
+            // Nothing in the chat moves (a script that calls the tools shows no row of its own):
+            // the turn is still going on.
+            if AppState.busy && root.messages.length > 0 && (root.messages[root.messages.length - 1].role == "user" || (root.messages[root.messages.length - 1].role == "tool" && !root.messages[root.messages.length - 1].running)): HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    max-width: Theme.composer-max-width;
+                    horizontal-stretch: 1000;
+                    height: 22px;
+                    HorizontalLayout {
+                        spacing: 2px;
+                        Pulse { }
+                        Text { text: "作業しています…"; color: Theme.fg-secondary; font-size: 12px; vertical-alignment: center; }
+                    }
+                }
             }
         }
     }

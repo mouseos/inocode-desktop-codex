@@ -194,6 +194,9 @@ pub struct Settings {
     /// configRequirements/read: what the server allows (None = unrestricted).
     pub allowed_policies: Option<Vec<String>>,
     pub allowed_sandboxes: Option<Vec<String>>,
+    /// model_reasoning_summary of the server's configuration; "auto" is sent when it has none
+    /// (the model's own default is "none", which asks for no summary of the thinking).
+    pub summary: Option<String>,
 }
 
 impl Settings {
@@ -235,6 +238,7 @@ impl Default for Settings {
             server_sandbox: None,
             allowed_policies: None,
             allowed_sandboxes: None,
+            summary: None,
         }
     }
 }

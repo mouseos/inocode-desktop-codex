@@ -345,6 +345,7 @@ pub(crate) fn upsert_tool(model: &VecModel<Message>, id: &str, text: &str, detai
         if let Some(mut row) = model.row_data(i) {
             if row.role == "tool" && row.id == id {
                 row.text = text.into();
+                row.running = client::is_running(text);
                 if let Some(d) = detail {
                     row.detail = clip_detail(d).into();
                     row.diff = diff_model(d);
@@ -358,6 +359,7 @@ pub(crate) fn upsert_tool(model: &VecModel<Message>, id: &str, text: &str, detai
         id: id.into(),
         role: "tool".into(),
         text: text.into(),
+        running: client::is_running(text),
         detail: detail.map(clip_detail).unwrap_or_default().into(),
         diff: detail.map(diff_model).unwrap_or_default(),
         ..Default::default()

@@ -26,7 +26,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 pub use approval::approval_info;
-pub use parse::{history_from_thread, parse_account, parse_models, parse_threads, rate_limit_text, tool_detail, tool_text};
+pub use parse::{history_from_thread, parse_account, parse_models, parse_threads, rate_limit_text, tool_detail, tool_text, is_running};
 pub use transport::{base_client_version, find_inocode, probe_models};
 pub use types::*;
 
@@ -56,6 +56,23 @@ mod tests {
         assert_eq!(tool_detail(&out), "$ dir\na\nb");
         let c = json!({"type":"collabAgentToolCall","tool":"wait","status":"inProgress","agentsStates":{"x":{"status":"running","message":null}}});
         assert_eq!(tool_text(&c).unwrap(), "待機中 (1 件実行中)");
+    }
+
+    #[test]
+    fn thinking_and_search_rows_say_what_is_going_on() {
+        let r = |a: i64, b: Option<i64>| json!({"type":"reasoning","startedAtMs":a,"completedAtMs":b});
+        assert_eq!(tool_text(&json!({"type":"reasoning"})).unwrap(), "思考しています…");
+        assert_eq!(tool_text(&r(0, Some(300))).unwrap(), "思考しました");
+        assert_eq!(tool_text(&r(0, Some(4200))).unwrap(), "4秒間思考しました");
+        let begin = json!({"type":"webSearch","id":"w","query":""});
+        assert_eq!(tool_text(&begin).unwrap(), "ウェブを検索しています…");
+        let end = json!({"type":"webSearch","id":"w","query":"v100","action":{"type":"search","query":"v100"},
+            "results":[{"engine":"bing","title":"T","url":"https://x","snippet":"s"}]});
+        assert_eq!(tool_text(&end).unwrap(), "ウェブを検索しました: v100");
+        assert_eq!(tool_detail(&end), "T
+https://x
+s");
+        assert!(is_running("コードを実行しています…") && !is_running("思考しました"));
     }
 
     #[test]

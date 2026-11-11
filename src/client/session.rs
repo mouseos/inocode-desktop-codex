@@ -282,6 +282,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                     self.settings.server_sandbox.take(),
                     self.settings.allowed_policies.take(),
                     self.settings.allowed_sandboxes.take(),
+                    self.settings.summary.take(),
                 );
                 *self.settings = s;
                 (
@@ -289,6 +290,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                     self.settings.server_sandbox,
                     self.settings.allowed_policies,
                     self.settings.allowed_sandboxes,
+                    self.settings.summary,
                 ) = keep;
                 self.push_settings()?;
             }
@@ -568,6 +570,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                 let text = |k: &str| cfg.get(k).and_then(Value::as_str).map(str::to_string);
                 self.settings.server_policy = text("approval_policy");
                 self.settings.server_sandbox = text("sandbox_mode");
+                self.settings.summary = text("model_reasoning_summary");
                 self.begin_thread()?;
             }
             Pending::SettingsUpdate => {}

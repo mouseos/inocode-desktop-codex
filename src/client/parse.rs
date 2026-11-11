@@ -47,30 +47,54 @@ pub fn tool_text(item: &Value) -> Option<String> {
         "mcpToolCall" => {
             let server = item.get("server").and_then(Value::as_str).unwrap_or("");
             let tool = item.get("tool").and_then(Value::as_str).unwrap_or("");
-            Some(format!("ツール {server}/{tool}{suffix}"))
+            Some(if tool == "exec" { exec_text(item) } else { format!("ツール {server}/{tool}{suffix}") })
         }
         "dynamicToolCall" => {
             let tool = item.get("tool").and_then(Value::as_str).unwrap_or("");
-            Some(format!("ツール {tool}{suffix}"))
+            Some(if tool == "exec" { exec_text(item) } else { format!("ツール {tool}{suffix}") })
         }
-        // Claude: "Thinking…" while it runs, "Thought for {s}s" afterwards.
+        // Claude: "Thinking…" while it runs, "Thought for {s}s" afterwards; no seconds when they
+        // round to 0 (Codex: "Thinking" / "Thought for {elapsed}" / "Thought").
         "reasoning" => {
             let ms = |k: &str| item.get(k).and_then(Value::as_i64);
-            Some(match (ms("startedAtMs"), ms("completedAtMs")) {
-                (Some(a), Some(b)) if b >= a => format!("{}秒間思考しました", ((b - a) + 500) / 1000),
-                _ if item.get("status").and_then(Value::as_str) == Some("completed") => "思考しました".to_string(),
-                _ => "思考中…".to_string(),
+            let secs = match (ms("startedAtMs"), ms("completedAtMs")) {
+                (Some(a), Some(b)) if b >= a => Some(((b - a) + 500) / 1000),
+                _ => None,
+            };
+            let done = secs.is_some() || item.get("status").and_then(Value::as_str) == Some("completed");
+            Some(match secs {
+                _ if !done => "思考しています…".to_string(),
+                Some(s) if s >= 1 => format!("{s}秒間思考しました"),
+                _ => "思考しました".to_string(),
             })
         }
         "plan" => Some("プラン".to_string()),
         "contextCompaction" => Some("コンテキストを圧縮しました".to_string()),
+        // Claude: "Searching web" / "Searched web" / "Failed to search web" + the query; Codex:
+        // "Searching the web" / "Searched the web" + "for {query}". The item has no status: it
+        // starts with no query, action and results, and completes with them.
         "webSearch" => {
             let q = item
                 .get("query")
                 .and_then(Value::as_str)
                 .or_else(|| item.pointer("/action/query").and_then(Value::as_str))
                 .unwrap_or("");
-            Some(if q.is_empty() { "ウェブ検索".to_string() } else { format!("ウェブ検索: {q}") })
+            let failed = item.get("status").and_then(Value::as_str) == Some("failed");
+            let given = |k: &str| item.get(k).map(|v| !v.is_null()).unwrap_or(false);
+            let done = failed || given("results") || given("action") || !q.is_empty();
+            let act = |k: &str| item.pointer(&format!("/action/{k}")).and_then(Value::as_str).unwrap_or("");
+            let with = |label: &str, what: &str| if what.is_empty() { label.to_string() } else { format!("{label}: {what}") };
+            Some(if !done {
+                "ウェブを検索しています…".to_string()
+            } else if failed {
+                with("ウェブ検索に失敗しました", q)
+            } else {
+                match item.pointer("/action/type").and_then(Value::as_str) {
+                    Some("openPage") => with("ページを開きました", act("url")),
+                    Some("findInPage") => with("ページ内を検索しました", act("pattern")),
+                    _ => with("ウェブを検索しました", q),
+                }
+            })
         }
         "imageView" => Some(format!("画像を表示: {}", item.get("path").and_then(Value::as_str).unwrap_or(""))),
         "collabAgentToolCall" => {
@@ -105,6 +129,20 @@ pub fn tool_text(item: &Value) -> Option<String> {
         }
         _ => None,
     }
+}
+
+/// The code mode's `exec` (a script that calls the other tools): what it is doing.
+fn exec_text(item: &Value) -> String {
+    match item.get("status").and_then(Value::as_str).unwrap_or("") {
+        "completed" => "コードを実行しました".to_string(),
+        "failed" => "コードの実行に失敗しました".to_string(),
+        _ => "コードを実行しています…".to_string(),
+    }
+}
+
+/// Whether a row's text is of something that is still going on.
+pub fn is_running(text: &str) -> bool {
+    text.ends_with('…') || text.ends_with("実行中")
 }
 
 /// The changes of a fileChange item (what an apply_patch writes, also while it is still being
@@ -170,11 +208,36 @@ pub fn tool_detail(item: &Value) -> String {
             }
             out.trim_end().to_string()
         }
-        "reasoning" => item
-            .get("summary")
-            .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n\n"))
-            .unwrap_or_default(),
+        // The summary; the raw content only when there is no summary.
+        "reasoning" => {
+            let join = |k: &str| {
+                item.get(k)
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter_map(Value::as_str).filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n"))
+                    .unwrap_or_default()
+            };
+            let summary = join("summary");
+            if summary.is_empty() { join("content") } else { summary }
+        }
+        "webSearch" => {
+            let mut out: Vec<String> = Vec::new();
+            for r in item.get("results").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]) {
+                let s = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or("");
+                let mut block = s("title").to_string();
+                for part in [s("url"), s("snippet")] {
+                    if !part.is_empty() {
+                        if !block.is_empty() {
+                            block.push('\n');
+                        }
+                        block.push_str(part);
+                    }
+                }
+                if !block.is_empty() {
+                    out.push(block);
+                }
+            }
+            out.join("\n\n")
+        }
         "plan" => text("text"),
         "collabAgentToolCall" => {
             let mut out = text("prompt");
@@ -367,6 +430,9 @@ pub(super) fn turn_overrides(s: &Settings, with_permissions: bool, params: &mut 
     if let Some(e) = &s.effort {
         params["effort"] = json!(e);
     }
+    // Without this the model's default decides, and that is "none" for the models of the catalog:
+    // no summary of the thinking is asked for, so there is nothing to show.
+    params["summary"] = json!(s.summary.as_deref().filter(|v| !v.is_empty()).unwrap_or("auto"));
 }
 
 pub(super) fn applied(result: &Value) -> Event {

@@ -102,7 +102,14 @@ impl<F: Fn(Event)> Session<'_, F> {
                     }
                 }
             }
-            "item/commandExecution/outputDelta" | "item/reasoning/summaryTextDelta" | "item/plan/delta" | "item/fileChange/outputDelta" => {
+            // The next part of a summary starts after a blank line.
+            "item/reasoning/summaryPartAdded" => {
+                let first = params.get("summaryIndex").and_then(Value::as_i64).unwrap_or(0) <= 0;
+                if let (Some(id), false) = (params.get("itemId").and_then(Value::as_str), first) {
+                    (self.on_event)(Event::ToolDelta { id: id.to_string(), delta: "\n\n".into() });
+                }
+            }
+            "item/commandExecution/outputDelta" | "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" | "item/plan/delta" | "item/fileChange/outputDelta" => {
                 let (id, delta) = (
                     params.get("itemId").and_then(Value::as_str),
                     params.get("delta").and_then(Value::as_str),

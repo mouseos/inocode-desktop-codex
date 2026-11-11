@@ -55,6 +55,8 @@ export struct Message {
     images: [image],
     // The body of a tool row that is a diff, row by row
     diff: [DiffRow],
+    // A tool row of something that is still going on (it moves)
+    running: bool,
 }
 
 // チャット画面の状態とコールバックをここに集約する。Rust は app.global::<AppState>() で触り、
