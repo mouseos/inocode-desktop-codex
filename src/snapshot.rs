@@ -439,7 +439,7 @@ pub(crate) fn install(app: &AppWindow) {
     let weak = app.as_weak();
     let shot = slint::Timer::default();
     let act_steps = std::env::var("INOCODE_GUI_ACT").map(|s| s.split(';').filter(|x| !x.trim().is_empty()).count() as u64).unwrap_or(0);
-    let shot_at = if live.is_some() { delay } else { (delay + 6).max(if act_steps > 0 { delay + 3 + act_steps + 3 } else { 0 }) };
+    let shot_at = if live.is_some() { if std::env::var("INOCODE_GUI_TAB").is_ok() { delay + 3 } else { delay } } else { (delay + 6).max(if act_steps > 0 { delay + 3 + act_steps + 3 } else { 0 }) };
     shot.start(slint::TimerMode::SingleShot, Duration::from_secs(shot_at), move || {
         if let Some(app) = weak.upgrade() {
             write(&app, std::path::Path::new(&path));
