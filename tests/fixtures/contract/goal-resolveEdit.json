@@ -1,0 +1,12 @@
+{
+  "method": "inocode/goal/resolveEdit",
+  "request": {
+    "threadId": "019a0000-0000-7000-8000-000000000001",
+    "requestId": "call_edit_1",
+    "approve": true
+  },
+  "response": {
+    "applied": true
+  },
+  "note": "approve=true なら、提案の目標文を、ユーザー自身の thread/goal/set(origin=user。履歴に User set the goal が残る)で適用する。完了済みの目標なら、active に戻す。approve=false は要求を捨てるだけ(applied=false)。待っていない・置き換えられた requestId は invalid params。許可は1件ごと(以後の編集の一括許可は無い)。"
+}

@@ -14,6 +14,7 @@ import { PromptState, QuestionCard, QueueList, ErrorBanner } from "prompts.slint
 import { MarkdownView } from "markdown.slint";
 import { ReplyState, ReplyChips, RefChip } from "reply.slint";
 import { GitState, GitChip, GitPanel } from "git_panel.slint";
+import { GoalState, GoalEditCard, GoalEvidenceCard } from "goal.slint";
 
 component ApprovalButton inherits Rectangle {
     in property <string> label;
@@ -509,6 +510,8 @@ export component Home inherits Rectangle {
                     max-width: Theme.composer-max-width;
                     decide(k, d) => { AppState.decide(k, d); }
                 }
+                if GoalState.edit-open: GoalEditCard { max-width: Theme.composer-max-width; }
+                if GoalState.evidence-open: GoalEvidenceCard { max-width: Theme.composer-max-width; }
                 if AppState.disconnected: NoticeBar {
                     max-width: Theme.composer-max-width;
                     text: "サーバーに接続できません";

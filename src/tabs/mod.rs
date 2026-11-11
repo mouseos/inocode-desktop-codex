@@ -14,6 +14,7 @@ mod evidence;
 mod knowledge;
 mod settings;
 mod stats;
+mod goal;
 mod team;
 mod team_graph;
 mod team_log;
@@ -58,6 +59,7 @@ pub fn install(app: &AppWindow, host: &Host) {
         (tab.install)(app, host);
     }
     stats::install(app, host);
+    goal::install(app, host);
     let weak = app.as_weak();
     let host = host.clone();
     app.global::<crate::Tabs>().on_opened(move |i| {
@@ -76,4 +78,5 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
         (tab.event)(app, host, event);
     }
     stats::event(app, host, event);
+    goal::event(app, host, event);
 }

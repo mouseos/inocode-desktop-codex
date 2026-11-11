@@ -1,0 +1,48 @@
+{
+  "method": "inocode/goal/completionEvidence",
+  "request": {
+    "threadId": "019a0000-0000-7000-8000-000000000001"
+  },
+  "response": {
+    "evidence": {
+      "threadId": "019a0000-0000-7000-8000-000000000001",
+      "goalId": "goal_01",
+      "objective": "GUI の接続画面を Claude Desktop と同じ配置にする",
+      "recordedAt": 1762850500,
+      "requirements": [
+        {
+          "requirement": "接続画面の部品が公式の配置と一致する",
+          "claim": "met",
+          "evidence": [
+            {
+              "kind": "file",
+              "detail": "gui/inocode-desktop/ui/connect.rs"
+            },
+            {
+              "kind": "command",
+              "detail": "cargo check -p inocode-desktop",
+              "exitCode": 0
+            }
+          ]
+        }
+      ],
+      "hostFacts": [
+        {
+          "tool": "shell",
+          "kind": "command",
+          "detail": "cargo check -p inocode-desktop",
+          "outcome": "completed",
+          "success": true
+        },
+        {
+          "tool": "apply_patch",
+          "kind": "file_change",
+          "detail": "gui/inocode-desktop/ui/connect.rs",
+          "outcome": "completed",
+          "success": true
+        }
+      ]
+    }
+  },
+  "note": "モデルが update_goal(complete) を呼んだときの記録。requirements はモデルの申告(update_goal の任意の引数 requirements。claim と evidence はモデルの言葉のまま)。hostFacts はホストが観測した事実(目標が active の間に、ホストが実行したツール呼び出し: command の行、file_change の対象パス、outcome、success)で、モデルの申告とは別の欄。exitCode は、ホストの結果に終了コードが無いため、いまは常に null(不明)。どちらも完了を止めない。申告と事実を並べて表示し、突き合わせられるようにする。evidence が無ければ requirements は空。まだ完了していなければ evidence は null。"
+}

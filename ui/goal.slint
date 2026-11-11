@@ -1,0 +1,140 @@
+import { Theme } from "theme.slint";
+import { Icon, Glyph } from "icons.slint";
+import { Button } from "tabs/g_widgets.slint";
+
+// One line of a card's body. kind: 0 plain, 1 added, 2 removed (or failed), 3 head, 4 note.
+export struct GoalLine {
+    text: string,
+    kind: int,
+}
+
+export global GoalState {
+    // The model asked to change the goal text: nothing has changed yet; the user answers.
+    in property <bool> edit-open: false;
+    in property <string> edit-reason;
+    in property <string> edit-meta;
+    in property <[GoalLine]> edit-lines;
+    callback resolve(bool);
+    // The record the model's "complete" left: what it claims and what the host saw, apart.
+    in property <bool> evidence-open: false;
+    in property <string> evidence-objective;
+    in property <[GoalLine]> claims;
+    in property <[GoalLine]> facts;
+    callback evidence-close();
+}
+
+component Lines inherits VerticalLayout {
+    in property <[GoalLine]> lines;
+    in property <length> text-width;
+    spacing: 3px;
+    // A text with a width of its own knows how tall it is: the row takes that height.
+    for ln in root.lines: Rectangle {
+        height: t.preferred-height;
+        t := Text {
+            x: 0px;
+            y: 0px;
+            width: root.text-width;
+            text: ln.text;
+            wrap: word-wrap;
+            font-size: ln.kind == 3 ? 13px : 12px;
+            font-weight: ln.kind == 3 ? 600 : 400;
+            color: ln.kind == 1 ? (Theme.dark ? #3fb950 : #1a7f37)
+                : ln.kind == 2 ? Theme.danger
+                : ln.kind == 3 ? Theme.fg
+                : ln.kind == 4 ? Theme.fg-tertiary
+                : Theme.fg-secondary;
+        }
+    }
+}
+
+// Asks before the goal text is changed: the whole current and new text, the model's reason, the use so far.
+export component GoalEditCard inherits Rectangle {
+    border-radius: Theme.radius-composer;
+    background: Theme.composer;
+    border-width: 1px;
+    border-color: Theme.border;
+    height: col.preferred-height;
+    col := VerticalLayout {
+        padding: 12px;
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 6px;
+            Icon { width: 18px; text: Glyph.shield; font-size: 16px; color: Theme.warning; }
+            Text { text: "目標の変更の要求"; color: Theme.fg; font-size: 13px; font-weight: 600; vertical-alignment: center; }
+        }
+        Text { text: GoalState.edit-reason; font-size: 12px; color: Theme.fg-secondary; wrap: word-wrap; }
+        Rectangle {
+            border-radius: 8px;
+            background: Theme.hover;
+            height: body.preferred-height;
+            body := VerticalLayout {
+                padding: 8px;
+                Flickable {
+                    height: min(diff.preferred-height, 240px);
+                    content-height: diff.preferred-height;
+                    diff := Lines { lines: GoalState.edit-lines; text-width: root.width - 44px; }
+                }
+            }
+        }
+        Text { text: GoalState.edit-meta; font-size: 11px; color: Theme.fg-tertiary; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: end;
+            Button { label: "拒否"; clicked => { GoalState.resolve(false); } }
+            Button { label: "許可"; primary: true; clicked => { GoalState.resolve(true); } }
+        }
+    }
+}
+
+// The completion record: the model's claims at the left, what the host saw at the right, side by side.
+export component GoalEvidenceCard inherits Rectangle {
+    border-radius: Theme.radius-composer;
+    background: Theme.composer;
+    border-width: 1px;
+    border-color: Theme.border;
+    height: col.preferred-height;
+    col := VerticalLayout {
+        padding: 12px;
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 6px;
+            Icon { width: 18px; text: "\u{e5ca}"; font-size: 16px; color: Theme.fg-secondary; }
+            Text { text: "目標の完了の記録"; color: Theme.fg; font-size: 13px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+            Button { label: "閉じる"; clicked => { GoalState.evidence-close(); } }
+        }
+        Text { text: GoalState.evidence-objective; font-size: 12px; color: Theme.fg-secondary; wrap: word-wrap; }
+        Rectangle {
+            border-radius: 8px;
+            background: Theme.hover;
+            height: body.preferred-height;
+            body := HorizontalLayout {
+                padding: 8px;
+                spacing: 16px;
+                VerticalLayout {
+                    spacing: 6px;
+                    Text { text: "モデルの申告"; color: Theme.fg-tertiary; font-size: 11px; }
+                    Flickable {
+                        height: min(claims.preferred-height, 240px);
+                        content-height: claims.preferred-height;
+                        viewport-width: self.width;
+                        claims := Lines { lines: GoalState.claims; text-width: (root.width - 84px) / 2; }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 6px;
+                    Text { text: "ホストが観測した事実"; color: Theme.fg-tertiary; font-size: 11px; }
+                    Flickable {
+                        height: min(facts.preferred-height, 240px);
+                        content-height: facts.preferred-height;
+                        viewport-width: self.width;
+                        facts := Lines { lines: GoalState.facts; text-width: (root.width - 84px) / 2; }
+                    }
+                }
+            }
+        }
+    }
+}

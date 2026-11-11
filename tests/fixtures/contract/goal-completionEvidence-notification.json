@@ -1,0 +1,44 @@
+{
+  "method": "inocode/goal/completionEvidence",
+  "kind": "notification",
+  "params": {
+    "threadId": "019a0000-0000-7000-8000-000000000001",
+    "goalId": "goal_01",
+    "objective": "GUI の接続画面を Claude Desktop と同じ配置にする",
+    "recordedAt": 1762850500,
+    "requirements": [
+      {
+        "requirement": "接続画面の部品が公式の配置と一致する",
+        "claim": "met",
+        "evidence": [
+          {
+            "kind": "file",
+            "detail": "gui/inocode-desktop/ui/connect.rs"
+          },
+          {
+            "kind": "command",
+            "detail": "cargo check -p inocode-desktop",
+            "exitCode": 0
+          }
+        ]
+      }
+    ],
+    "hostFacts": [
+      {
+        "tool": "shell",
+        "kind": "command",
+        "detail": "cargo check -p inocode-desktop",
+        "outcome": "completed",
+        "success": true
+      },
+      {
+        "tool": "apply_patch",
+        "kind": "file_change",
+        "detail": "gui/inocode-desktop/ui/connect.rs",
+        "outcome": "completed",
+        "success": true
+      }
+    ]
+  },
+  "note": "update_goal(complete) のたびに送る。形は inocode/goal/completionEvidence の response.evidence と同じ。"
+}

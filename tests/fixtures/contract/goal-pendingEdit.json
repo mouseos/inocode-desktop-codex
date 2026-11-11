@@ -1,0 +1,21 @@
+{
+  "method": "inocode/goal/pendingEdit",
+  "request": {
+    "threadId": "019a0000-0000-7000-8000-000000000001"
+  },
+  "response": {
+    "request": {
+      "threadId": "019a0000-0000-7000-8000-000000000001",
+      "requestId": "call_edit_1",
+      "currentObjective": "GUI の接続画面を Claude Desktop と同じ配置にする",
+      "newObjective": "GUI の接続画面と設定画面を Claude Desktop と同じ配置にする",
+      "reason": "設定画面も同じ配置にしないと、接続画面だけが浮く(モデルの主張)",
+      "status": "active",
+      "tokenBudget": 2000000,
+      "tokensUsed": 412345,
+      "timeUsedSeconds": 1830,
+      "requestedAt": 1762850000
+    }
+  },
+  "note": "再読み込み後などに、待っている要求を取り直す。無ければ request は null。"
+}

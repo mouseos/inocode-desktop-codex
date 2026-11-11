@@ -1,0 +1,17 @@
+{
+  "method": "inocode/goal/editRequested",
+  "kind": "notification",
+  "params": {
+    "threadId": "019a0000-0000-7000-8000-000000000001",
+    "requestId": "call_edit_1",
+    "currentObjective": "GUI の接続画面を Claude Desktop と同じ配置にする",
+    "newObjective": "GUI の接続画面と設定画面を Claude Desktop と同じ配置にする",
+    "reason": "設定画面も同じ配置にしないと、接続画面だけが浮く(モデルの主張)",
+    "status": "active",
+    "tokenBudget": 2000000,
+    "tokensUsed": 412345,
+    "timeUsedSeconds": 1830,
+    "requestedAt": 1762850000
+  },
+  "note": "モデルが request_goal_edit を呼んだときに送る。目標は、まだ変わっていない。クライアントは、currentObjective と newObjective の全文の差分、reason(モデルの主張と明記)、status、使用量(tokensUsed / tokenBudget / timeUsedSeconds)を、承認のカードに出し、回答を inocode/goal/resolveEdit で返す。同じスレッドで新しい要求が来たら、古い要求は置き換わる(古い requestId は resolveEdit で無効)。"
+}
