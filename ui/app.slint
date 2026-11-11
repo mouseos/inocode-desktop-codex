@@ -5,6 +5,8 @@ import { Sidebar, ChatItem, ProjectItem } from "sidebar.slint";
 import { Home } from "home.slint";
 import { AppState } from "state.slint";
 import { TaskPanel } from "panel.slint";
+import { SidePanel, SidePanelState } from "side_panel.slint";
+export { SidePanelState, TerminalState, FilesState, TermRun, TermLine, TermTab, FileEntry } from "side_panel.slint";
 import { IntelligenceState, PermState, ProjectState, FullAccessDialog, PickerDemo } from "pickers.slint";
 import { DiscoveryState, SettingsDialog } from "settings.slint";
 import { Tabs, TabStrip, TabHost } from "tabs.slint";
@@ -151,8 +153,24 @@ export component AppWindow inherits Window {
                     Rectangle { width: 6px; }
                     if Tabs.current == 0: IconButton {
                         glyph: Glyph.list;
-                        selected: root.panel-open;
-                        clicked => { root.panel-open = !root.panel-open; }
+                        selected: root.panel-open && SidePanelState.tab == 0;
+                        clicked => {
+                            if (root.panel-open && SidePanelState.tab == 0) { root.panel-open = false; } else { root.panel-open = true; SidePanelState.select(0); }
+                        }
+                    }
+                    if Tabs.current == 0: IconButton {
+                        glyph: Glyph.terminal;
+                        selected: root.panel-open && SidePanelState.tab == 1;
+                        clicked => {
+                            if (root.panel-open && SidePanelState.tab == 1) { root.panel-open = false; } else { root.panel-open = true; SidePanelState.select(1); }
+                        }
+                    }
+                    if Tabs.current == 0: IconButton {
+                        glyph: Glyph.folder;
+                        selected: root.panel-open && SidePanelState.tab == 2;
+                        clicked => {
+                            if (root.panel-open && SidePanelState.tab == 2) { root.panel-open = false; } else { root.panel-open = true; SidePanelState.select(2); }
+                        }
                     }
                     if Tabs.current == 0: IconButton {
                         glyph: Glyph.more-horiz;
@@ -190,7 +208,7 @@ export component AppWindow inherits Window {
                             prompt <=> root.prompt;
                             submit(t) => { root.submit(t); }
                         }
-                        if root.panel-open: TaskPanel {
+                        if root.panel-open: SidePanel {
                             cwd: AppState.cwd-text;
                             context-percent: AppState.context-percent;
                             usage-text: AppState.usage-text;

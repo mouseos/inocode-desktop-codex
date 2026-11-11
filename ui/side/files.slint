@@ -1,0 +1,122 @@
+import { Theme } from "../theme.slint";
+import { Icon, Glyph } from "../icons.slint";
+import { IconButton } from "../widgets.slint";
+
+export struct FileEntry {
+    name: string,
+    is-dir: bool,
+    depth: int,
+    open: bool,
+}
+
+// Rust: src/side_panel/files.rs
+export global FilesState {
+    in property <[FileEntry]> entries;
+    in property <string> root-name;
+    in property <string> error;
+    in-out property <bool> viewing: false;
+    in-out property <string> viewing-name;
+    in-out property <string> viewing-text;
+    callback refresh();
+    callback toggle(int);
+    callback close-file();
+}
+
+export component FilesView inherits Rectangle {
+    background: Theme.surface;
+    if !FilesState.viewing: VerticalLayout {
+        HorizontalLayout {
+            height: 30px;
+            padding-left: 12px;
+            padding-right: 8px;
+            padding-top: 3px;
+            padding-bottom: 3px;
+            Text {
+                text: FilesState.root-name;
+                color: Theme.fg;
+                font-size: 12px;
+                font-weight: 600;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            IconButton { glyph: Glyph.sync; icon-size: 15px; clicked => { FilesState.refresh(); } }
+        }
+        if FilesState.error != "": Text {
+            text: FilesState.error;
+            color: Theme.danger;
+            font-size: 12px;
+            wrap: word-wrap;
+            padding: 8px;
+        }
+        Flickable {
+            vertical-stretch: 1;
+            viewport-height: tree.preferred-height;
+            tree := VerticalLayout {
+                width: parent.width;
+                alignment: start;
+                padding-left: 6px;
+                padding-right: 6px;
+                for e[i] in FilesState.entries: Rectangle {
+                    height: 24px;
+                    border-radius: Theme.radius-row;
+                    background: ta.has-hover ? Theme.hover : transparent;
+                    ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { FilesState.toggle(i); }
+                    }
+                    HorizontalLayout {
+                        padding-left: 6px + e.depth * 14px;
+                        spacing: 4px;
+                        Icon {
+                            width: 16px;
+                            text: e.is-dir ? (e.open ? Glyph.folder-open : Glyph.folder) : Glyph.copy;
+                            font-size: 15px;
+                            color: Theme.fg-secondary;
+                        }
+                        Text {
+                            text: e.name;
+                            color: Theme.fg;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if FilesState.viewing: VerticalLayout {
+        HorizontalLayout {
+            height: 30px;
+            padding-left: 6px;
+            padding-right: 8px;
+            padding-top: 3px;
+            padding-bottom: 3px;
+            IconButton { glyph: Glyph.arrow-back; icon-size: 16px; clicked => { FilesState.close-file(); } }
+            Text {
+                text: FilesState.viewing-name;
+                color: Theme.fg;
+                font-size: 12px;
+                font-weight: 600;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+        }
+        Flickable {
+            vertical-stretch: 1;
+            viewport-height: body.preferred-height + 16px;
+            viewport-width: max(self.width, body.preferred-width + 16px);
+            body := Text {
+                x: 8px;
+                y: 4px;
+                text: FilesState.viewing-text;
+                font-family: "Consolas";
+                font-size: 12px;
+                color: Theme.fg;
+            }
+        }
+    }
+}

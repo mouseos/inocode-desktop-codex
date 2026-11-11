@@ -1,0 +1,95 @@
+import { Theme } from "theme.slint";
+import { TaskPanel } from "panel.slint";
+import { GitState } from "git_panel.slint";
+import { TerminalView } from "side/terminal.slint";
+import { FilesView } from "side/files.slint";
+
+export { TerminalState, TermRun, TermLine, TermTab } from "side/terminal.slint";
+export { FilesState, FileEntry } from "side/files.slint";
+
+// Tabs of the right-hand work area: 0 overview (the former right panel), 1 terminal, 2 files, 3 changes.
+// Rust: src/side_panel/mod.rs
+export global SidePanelState {
+    in-out property <int> tab: 0;
+    out property <[string]> titles: ["概要", "ターミナル", "ファイル", "変更"];
+    callback selected(int);
+    public function select(i: int) {
+        root.tab = i;
+        root.selected(i);
+    }
+}
+
+export component SidePanel inherits Rectangle {
+    in property <string> cwd;
+    in property <int> context-percent: 0;
+    in property <string> usage-text;
+    in property <string> rate-text;
+    background: Theme.surface;
+    preferred-width: SidePanelState.tab == 0 ? Theme.panel-width : 460px;
+    min-width: 280px;
+    max-width: 720px;
+    horizontal-stretch: 0;
+
+    Rectangle { x: 0px; width: 1px; background: Theme.border; }
+
+    VerticalLayout {
+        HorizontalLayout {
+            height: 32px;
+            padding-left: 8px;
+            padding-right: 8px;
+            padding-top: 4px;
+            padding-bottom: 2px;
+            spacing: 2px;
+            for title[i] in SidePanelState.titles: Rectangle {
+                width: label.preferred-width + 20px;
+                border-radius: Theme.radius-row;
+                background: ta.pressed ? Theme.pressed
+                    : SidePanelState.tab == i ? Theme.selected
+                    : ta.has-hover ? Theme.hover : transparent;
+                label := Text {
+                    text: title;
+                    color: SidePanelState.tab == i ? Theme.fg : Theme.fg-secondary;
+                    font-size: 12px;
+                    font-weight: SidePanelState.tab == i ? 600 : 400;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { SidePanelState.select(i); }
+                }
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            if SidePanelState.tab == 0: TaskPanel {
+                width: parent.width;
+                height: parent.height;
+                cwd: root.cwd;
+                context-percent: root.context-percent;
+                usage-text: root.usage-text;
+                rate-text: root.rate-text;
+            }
+            if SidePanelState.tab == 1: TerminalView {
+                width: parent.width;
+                height: parent.height;
+            }
+            if SidePanelState.tab == 2: FilesView {
+                width: parent.width;
+                height: parent.height;
+            }
+            if SidePanelState.tab == 3: Rectangle {
+                width: parent.width;
+                height: parent.height;
+                Rectangle {
+                    width: 180px;
+                    height: 32px;
+                    border-radius: Theme.radius-row;
+                    background: ca.has-hover ? Theme.pressed : Theme.selected;
+                    Text { text: "変更を開く"; color: Theme.fg; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
+                    ca := TouchArea { mouse-cursor: pointer; clicked => { GitState.show(); } }
+                }
+            }
+        }
+    }
+}

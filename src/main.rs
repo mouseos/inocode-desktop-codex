@@ -32,6 +32,7 @@ mod settings_plugins;
 mod state;
 mod thread_stats;
 mod tabs;
+mod side_panel;
 mod view;
 
 use state::*;

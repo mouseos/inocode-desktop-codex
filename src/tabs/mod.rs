@@ -60,6 +60,7 @@ pub fn install(app: &AppWindow, host: &Host) {
     }
     stats::install(app, host);
     goal::install(app, host);
+    crate::side_panel::install(app, host);
     let weak = app.as_weak();
     let host = host.clone();
     app.global::<crate::Tabs>().on_opened(move |i| {
@@ -82,4 +83,5 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
     if let Event::Notify { method, params } = event {
         crate::settings_mcp::on_notify(app, method, params);
     }
+    crate::side_panel::event(app, host, event);
 }
