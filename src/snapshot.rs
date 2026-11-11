@@ -361,9 +361,21 @@ pub(crate) fn install(app: &AppWindow) {
                 // The next step, once the turn of the last one is over (not at once: the turn
                 // needs a moment to start).
                 since_send += 1;
-                if since_send >= 6 && !steps.is_empty() && !app.global::<AppState>().get_busy() && !app.global::<PromptState>().get_question_open() {
+                // "@decide:accept|session|always|decline" answers the first approval card (even while
+                // the turn waits for it); "@run-plan" is what the button under a plan does.
+                let decide = steps.front().map(|s| s.starts_with("@decide:")).unwrap_or(false);
+                let ready_for_next = if decide { app.global::<AppState>().get_approvals().row_count() > 0 } else { !app.global::<AppState>().get_busy() };
+                if since_send >= 6 && !steps.is_empty() && ready_for_next && !app.global::<PromptState>().get_question_open() {
                     if let Some(next) = steps.pop_front() {
-                        app.invoke_submit(next.into());
+                        if let Some(d) = next.strip_prefix("@decide:") {
+                            if let Some(a) = app.global::<AppState>().get_approvals().row_data(0) {
+                                app.global::<AppState>().invoke_decide(a.key, d.into());
+                            }
+                        } else if next == "@run-plan" {
+                            crate::reply::act(&app, "run-plan", 0);
+                        } else {
+                            app.invoke_submit(next.into());
+                        }
                         since_send = 0;
                     }
                 }
