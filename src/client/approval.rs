@@ -38,10 +38,23 @@ pub fn permission_lines(profile: &Value) -> Vec<String> {
         }
         if let Some(entries) = fs.get("entries").and_then(Value::as_array) {
             for e in entries {
-                let path = e.pointer("/path").map(|p| p.as_str().map(str::to_string).unwrap_or_else(|| p.to_string())).unwrap_or_default();
-                let access = e.get("access").and_then(Value::as_str).unwrap_or("");
-                if !path.is_empty() {
-                    out.push(format!("{access} {path}").trim().to_string());
+                // The path is a string, or an object ({"path": "...", "type": "path"}).
+                let path = match e.get("path") {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(o) if o.get("path").and_then(Value::as_str).is_some() => o.get("path").and_then(Value::as_str).unwrap_or("").to_string(),
+                    Some(o) => o.to_string(),
+                    None => String::new(),
+                };
+                let access = match e.get("access").and_then(Value::as_str).unwrap_or("") {
+                    "read" => "読み取り:",
+                    "write" => "書き込み:",
+                    "none" => "禁止:",
+                    other => other,
+                };
+                let line = format!("{access} {path}").trim().to_string();
+                // (the same line may already be there from the read / write lists)
+                if !path.is_empty() && !out.contains(&line) {
+                    out.push(line);
                 }
             }
         }
