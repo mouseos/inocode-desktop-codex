@@ -186,20 +186,91 @@ pub(crate) fn install(app: &AppWindow) {
         });
         extra.extend([first, second]);
     }
-    let weak = app.as_weak();
-    let shot = slint::Timer::default();
-    shot.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 6), move || {
-        if let Some(app) = weak.upgrade() {
-            if let Ok(buf) = app.window().take_snapshot() {
-                if let Ok(file) = std::fs::File::create(&path) {
-                    let mut enc = png::Encoder::new(std::io::BufWriter::new(file), buf.width(), buf.height());
-                    enc.set_color(png::ColorType::Rgba);
-                    enc.set_depth(png::BitDepth::Eight);
-                    if let Ok(mut w) = enc.write_header() {
-                        let _ = w.write_image_data(buf.as_bytes());
-                    }
+    // INOCODE_GUI_PROMPT=<text>: a real turn. Once the app is connected (and INOCODE_GUI_MODEL=<id or
+    // name>, when given, is chosen) the text goes the way a typed message goes (the composer's
+    // submit: the same turn/start, with summary). INOCODE_GUI_SNAPSHOT_EVERY=<seconds> also writes
+    // <file>-1.png, <file>-2.png ... on the way. The last picture is written INOCODE_GUI_SNAPSHOT_DELAY
+    // seconds after the start.
+    let live = std::env::var("INOCODE_GUI_PROMPT").ok().filter(|p| !p.is_empty());
+    if let Some(text) = live.clone() {
+        let weak = app.as_weak();
+        let model = std::env::var("INOCODE_GUI_MODEL").ok().filter(|m| !m.is_empty());
+        let started = std::time::Instant::now();
+        let mut stage = 0u8;
+        let mut waited = 0u32;
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::Repeated, Duration::from_millis(500), move || {
+            let Some(app) = weak.upgrade() else { return };
+            if stage >= 2 || started.elapsed() < Duration::from_secs(2) {
+                return;
+            }
+            let ready = STATE.with(|s| {
+                let st = s.borrow();
+                !st.active.is_empty() && !visible_models(&st).is_empty()
+            });
+            if !ready {
+                return;
+            }
+            if stage == 0 {
+                match &model {
+                    Some(m) => app.invoke_submit(format!("/model {m}").into()),
+                    None => {}
+                }
+                stage = 1;
+                waited = 0;
+                return;
+            }
+            // Stage 1: wait for the model (and a new thread when the provider changed).
+            waited += 1;
+            let chosen = STATE.with(|s| {
+                let st = s.borrow();
+                let v = visible_models(&st);
+                selected_model(&st, &v).is_some() && !st.active.is_empty()
+            });
+            if (chosen && waited >= 4) || waited > 40 {
+                if chosen {
+                    app.invoke_submit(text.clone().into());
+                }
+                stage = 2;
+            }
+        });
+        extra.push(t);
+    }
+    let write = |app: &AppWindow, path: &std::path::Path| {
+        if let Ok(buf) = app.window().take_snapshot() {
+            if let Ok(file) = std::fs::File::create(path) {
+                let mut enc = png::Encoder::new(std::io::BufWriter::new(file), buf.width(), buf.height());
+                enc.set_color(png::ColorType::Rgba);
+                enc.set_depth(png::BitDepth::Eight);
+                if let Ok(mut w) = enc.write_header() {
+                    let _ = w.write_image_data(buf.as_bytes());
                 }
             }
+        }
+    };
+    if live.is_some() {
+        let every = env_num("INOCODE_GUI_SNAPSHOT_EVERY", 0);
+        if every > 0 {
+            let weak = app.as_weak();
+            let base = std::path::PathBuf::from(&path);
+            let mut n = 0u32;
+            let t = slint::Timer::default();
+            t.start(slint::TimerMode::Repeated, Duration::from_secs(every), move || {
+                if let Some(app) = weak.upgrade() {
+                    n += 1;
+                    let stem = base.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                    write(&app, &base.with_file_name(format!("{stem}-{n}.png")));
+                }
+            });
+            extra.push(t);
+        }
+    }
+    let weak = app.as_weak();
+    let shot = slint::Timer::default();
+    let shot_at = if live.is_some() { delay } else { delay + 6 };
+    shot.start(slint::TimerMode::SingleShot, Duration::from_secs(shot_at), move || {
+        if let Some(app) = weak.upgrade() {
+            write(&app, std::path::Path::new(&path));
         }
         let _ = slint::quit_event_loop();
     });
