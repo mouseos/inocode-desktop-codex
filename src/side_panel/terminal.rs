@@ -19,6 +19,10 @@ struct Term {
     title: String,
     screen: Screen,
     exited: bool,
+    /// How many lines the view is scrolled back (0 is the live screen).
+    offset: usize,
+    /// The selected rows of the view (from, to), in either order.
+    sel: Option<(usize, usize)>,
 }
 
 struct Terminals {
@@ -75,12 +79,87 @@ pub fn install(app: &AppWindow, host: &Host) {
         }
         render(&app);
     });
-    let h = host.clone();
+    let (weak, h) = (app.as_weak(), host.clone());
     state.on_key(move |text, ctrl, alt, shift| {
+        let Some(app) = weak.upgrade() else { return };
+        // Ctrl+Shift+C copies, Ctrl+V and Ctrl+Shift+V paste (as in Windows Terminal).
+        let lower = text.to_lowercase();
+        if ctrl && shift && (lower == "c" || lower == "\u{3}") {
+            copy_selection(&app);
+            return;
+        }
+        if ctrl && (lower == "v" || lower == "\u{16}") {
+            paste(&h);
+            return;
+        }
+        // Typing returns to the live screen.
+        let moved = TERMS.with(|t| {
+            let mut t = t.borrow_mut();
+            let cur = t.current;
+            match t.list.get_mut(cur) {
+                Some(term) if term.offset > 0 || term.sel.is_some() => {
+                    term.offset = 0;
+                    term.sel = None;
+                    true
+                }
+                _ => false,
+            }
+        });
+        if moved {
+            render(&app);
+        }
         if let Some(bytes) = key_bytes(text.as_str(), ctrl, alt, shift) {
             write(&h, &bytes);
         }
     });
+    let weak = app.as_weak();
+    state.on_scroll(move |delta| {
+        let Some(app) = weak.upgrade() else { return };
+        TERMS.with(|t| {
+            let mut t = t.borrow_mut();
+            let cur = t.current;
+            if let Some(term) = t.list.get_mut(cur) {
+                let max = term.screen.scrollback_len() as i32;
+                term.offset = (term.offset as i32 + delta).clamp(0, max) as usize;
+                term.sel = None;
+            }
+        });
+        render(&app);
+    });
+    let weak = app.as_weak();
+    state.on_sel_start(move |row| {
+        let Some(app) = weak.upgrade() else { return };
+        TERMS.with(|t| {
+            let mut t = t.borrow_mut();
+            let cur = t.current;
+            if let Some(term) = t.list.get_mut(cur) {
+                term.sel = Some((row.max(0) as usize, row.max(0) as usize));
+            }
+        });
+        render(&app);
+    });
+    let weak = app.as_weak();
+    state.on_sel_update(move |row| {
+        let Some(app) = weak.upgrade() else { return };
+        TERMS.with(|t| {
+            let mut t = t.borrow_mut();
+            let cur = t.current;
+            if let Some(term) = t.list.get_mut(cur) {
+                if let Some((from, _)) = term.sel {
+                    term.sel = Some((from, row.max(0) as usize));
+                }
+            }
+        });
+        render(&app);
+    });
+    let weak = app.as_weak();
+    state.on_copy(move || {
+        if let Some(app) = weak.upgrade() {
+            copy_selection(&app);
+        }
+    });
+    let h = host.clone();
+    state.on_paste(move || paste(&h));
     let (weak, h) = (app.as_weak(), host.clone());
     state.on_viewport(move |w, hgt| {
         let Some(app) = weak.upgrade() else { return };
@@ -151,6 +230,8 @@ fn spawn(app: &AppWindow, host: &Host) {
             title: format!("ターミナル {n}"),
             screen: Screen::new(cols, rows),
             exited: false,
+            offset: 0,
+            sel: None,
         });
         t.current = t.list.len() - 1;
         (t.list[t.current].handle.clone(), cols, rows)
@@ -181,6 +262,36 @@ fn write(host: &Host, bytes: &[u8]) {
     });
     if let Some(handle) = handle {
         host.rpc("term.write", "process/writeStdin", json!({ "processHandle": handle, "deltaBase64": b64::encode(bytes) }));
+    }
+}
+
+/// The selected rows (or the whole view when nothing is selected) go to the clipboard.
+fn copy_selection(app: &AppWindow) {
+    let text = TERMS.with(|t| {
+        let t = t.borrow();
+        let term = t.list.get(t.current)?;
+        let lines = term.screen.text_at(term.offset);
+        let (from, to) = match term.sel {
+            Some((a, b)) => (a.min(b), a.max(b)),
+            None => (0, lines.len().saturating_sub(1)),
+        };
+        let picked: Vec<&str> = lines.iter().skip(from).take(to + 1 - from).map(String::as_str).collect();
+        Some(picked.join("\n").trim_end().to_string())
+    });
+    let Some(text) = text else { return };
+    let _ = app;
+    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+        let _ = clipboard.set_text(text);
+    }
+}
+
+/// The clipboard text is typed into the terminal (line breaks as Enter).
+fn paste(host: &Host) {
+    let Ok(mut clipboard) = arboard::Clipboard::new() else { return };
+    let Ok(text) = clipboard.get_text() else { return };
+    let text = text.replace("\r\n", "\r").replace('\n', "\r");
+    if !text.is_empty() {
+        write(host, text.as_bytes());
     }
 }
 
@@ -313,12 +424,18 @@ fn render(app: &AppWindow) {
             .collect();
         state.set_tabs(ModelRc::from(Rc::new(VecModel::from(tabs))));
         let lines: Vec<TermLine> = match t.list.get(t.current) {
-            Some(term) => term
-                .screen
-                .lines()
-                .iter()
-                .map(|l| TermLine { runs: ModelRc::from(Rc::new(VecModel::from(l.iter().map(run).collect::<Vec<_>>()))) })
-                .collect(),
+            Some(term) => {
+                let (from, to) = term.sel.map(|(a, b)| (a.min(b), a.max(b))).unwrap_or((1, 0));
+                term.screen
+                    .lines_at(term.offset)
+                    .iter()
+                    .enumerate()
+                    .map(|(i, l)| TermLine {
+                        runs: ModelRc::from(Rc::new(VecModel::from(l.iter().map(run).collect::<Vec<_>>()))),
+                        selected: i >= from && i <= to,
+                    })
+                    .collect()
+            }
             None => Vec::new(),
         };
         state.set_lines(ModelRc::from(Rc::new(VecModel::from(lines))));

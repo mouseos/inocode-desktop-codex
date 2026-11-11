@@ -1,6 +1,7 @@
 import { Theme } from "../theme.slint";
 import { Icon, Glyph } from "../icons.slint";
 import { IconButton } from "../widgets.slint";
+import { Button, LineEdit } from "../tabs/g_widgets.slint";
 
 export struct FileEntry {
     name: string,
@@ -17,9 +18,15 @@ export global FilesState {
     in-out property <bool> viewing: false;
     in-out property <string> viewing-name;
     in-out property <string> viewing-text;
+    // The search box and what it found (relative paths).
+    in-out property <string> query;
+    in property <[string]> results;
     callback refresh();
     callback toggle(int);
     callback close-file();
+    callback search(string);
+    callback open-result(int);
+    callback open-external();
 }
 
 export component FilesView inherits Rectangle {
@@ -42,14 +49,52 @@ export component FilesView inherits Rectangle {
             }
             IconButton { glyph: Glyph.sync; icon-size: 15px; clicked => { FilesState.refresh(); } }
         }
+        HorizontalLayout {
+            height: 30px;
+            padding-left: 8px;
+            padding-right: 8px;
+            padding-bottom: 2px;
+            LineEdit {
+                text <=> FilesState.query;
+                horizontal-stretch: 1;
+                edited(t) => { FilesState.search(t); }
+            }
+        }
         if FilesState.error != "": Text {
             text: FilesState.error;
             color: Theme.danger;
             font-size: 12px;
             wrap: word-wrap;
-            padding: 8px;
         }
-        Flickable {
+        if FilesState.query != "": Flickable {
+            vertical-stretch: 1;
+            viewport-height: found.preferred-height;
+            found := VerticalLayout {
+                width: parent.width;
+                alignment: start;
+                padding-left: 6px;
+                padding-right: 6px;
+                for r[i] in FilesState.results: Rectangle {
+                    height: 24px;
+                    border-radius: Theme.radius-row;
+                    background: rt.has-hover ? Theme.hover : transparent;
+                    rt := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { FilesState.open-result(i); }
+                    }
+                    Text {
+                        x: 8px;
+                        width: parent.width - 16px;
+                        text: r;
+                        color: Theme.fg;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        if FilesState.query == "": Flickable {
             vertical-stretch: 1;
             viewport-height: tree.preferred-height;
             tree := VerticalLayout {
@@ -104,6 +149,7 @@ export component FilesView inherits Rectangle {
                 overflow: elide;
                 horizontal-stretch: 1;
             }
+            Button { label: "エディタで開く"; clicked => { FilesState.open-external(); } }
         }
         Flickable {
             vertical-stretch: 1;

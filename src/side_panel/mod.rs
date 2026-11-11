@@ -58,9 +58,29 @@ fn demo(app: &AppWindow, host: &Host) {
     // the terminal view's key handler, one every half second from the 7th second.
     if let Ok(keys) = std::env::var("INOCODE_GUI_TERM_KEYS") {
         for (i, token) in keys.split(';').enumerate() {
-            let (host, token) = (host.clone(), token.to_string());
+            let (host, token, weak) = (host.clone(), token.to_string(), app.as_weak());
             let t = slint::Timer::default();
             t.start(slint::TimerMode::SingleShot, Duration::from_millis(7000 + 500 * i as u64), move || {
+                // Terminal tabs, scrolling, selection and copy: the same callbacks the view calls.
+                if let Some(app) = weak.upgrade() {
+                    let ts = app.global::<crate::TerminalState>();
+                    let (name, arg) = token.split_once(':').unwrap_or((token.as_str(), ""));
+                    let n = arg.parse::<i32>().unwrap_or(0);
+                    match name {
+                        "newterm" => return ts.invoke_new_terminal(),
+                        "selterm" => return ts.invoke_select(n),
+                        "closeterm" => return ts.invoke_close(n),
+                        "scroll" => return ts.invoke_scroll(n),
+                        "selrow" => {
+                            let (a, b) = arg.split_once('-').unwrap_or(("0", "0"));
+                            ts.invoke_sel_start(a.parse().unwrap_or(0));
+                            return ts.invoke_sel_update(b.parse().unwrap_or(0));
+                        }
+                        "copy" => return ts.invoke_copy(),
+                        "paste" => return ts.invoke_paste(),
+                        _ => {}
+                    }
+                }
                 if let Some(text) = token.strip_prefix("type:") {
                     for ch in text.chars() {
                         terminal::send_key(&host, &ch.to_string(), false);
@@ -79,6 +99,32 @@ fn demo(app: &AppWindow, host: &Host) {
                     _ => return,
                 };
                 terminal::send_key(&host, text, ctrl);
+            });
+            timers.push(t);
+        }
+    }
+    // INOCODE_GUI_FILES="toggle:3;search:main;openresult:0;external": the Files tab's callbacks,
+    // one every second from the 5th second.
+    if let Ok(steps) = std::env::var("INOCODE_GUI_FILES") {
+        for (i, step) in steps.split(';').enumerate() {
+            let (weak, step) = (app.as_weak(), step.to_string());
+            let t = slint::Timer::default();
+            t.start(slint::TimerMode::SingleShot, Duration::from_millis(5000 + 1000 * i as u64), move || {
+                let Some(app) = weak.upgrade() else { return };
+                let fs = app.global::<crate::FilesState>();
+                let (name, arg) = step.split_once(':').unwrap_or((step.as_str(), ""));
+                let n = arg.parse::<i32>().unwrap_or(0);
+                match name {
+                    "toggle" => fs.invoke_toggle(n),
+                    "search" => {
+                        fs.set_query(arg.into());
+                        fs.invoke_search(arg.into());
+                    }
+                    "openresult" => fs.invoke_open_result(n),
+                    "external" => fs.invoke_open_external(),
+                    "closefile" => fs.invoke_close_file(),
+                    _ => {}
+                }
             });
             timers.push(t);
         }

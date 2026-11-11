@@ -18,6 +18,46 @@ struct Data {
     children: HashMap<String, Vec<(String, bool)>>,
     /// The rows on screen: (path, is_dir).
     rows: Vec<(String, bool)>,
+    /// The search results on screen: absolute paths.
+    found: Vec<String>,
+    /// The file in the viewer.
+    viewing: String,
+}
+
+/// Show a file in the viewer.
+fn view_file(app: &AppWindow, host: &Host, path: &str) {
+    let name = path.rsplit(['\\', '/']).next().unwrap_or(path).to_string();
+    DATA.with(|d| d.borrow_mut().viewing = path.to_string());
+    let st = app.global::<FilesState>();
+    st.set_viewing(true);
+    st.set_viewing_name(name.into());
+    st.set_viewing_text("読み込み中…".into());
+    host.rpc(&format!("files.file:{path}"), "fs/readFile", json!({ "path": path }));
+}
+
+/// Open a file in the editor: VS Code when it is installed, else the program Windows has for it.
+fn open_external(path: &str) -> Result<(), String> {
+    use std::process::Command as Proc;
+    let mut cmd = if cfg!(windows) {
+        let has_code = Proc::new("where").arg("code").output().map(|o| o.status.success()).unwrap_or(false);
+        let mut c = Proc::new("cmd");
+        if has_code {
+            c.args(["/C", "code", path]);
+        } else {
+            c.args(["/C", "start", "", path]);
+        }
+        c
+    } else {
+        let mut c = Proc::new("xdg-open");
+        c.arg(path);
+        c
+    };
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    cmd.spawn().map(|_| ()).map_err(|e| format!("開けません: {e}"))
 }
 
 thread_local! {
@@ -63,12 +103,37 @@ pub fn install(app: &AppWindow, host: &Host) {
             }
             render(&app);
         } else {
-            let name = path.rsplit(['\\', '/']).next().unwrap_or(&path).to_string();
-            let st = app.global::<FilesState>();
-            st.set_viewing(true);
-            st.set_viewing_name(name.into());
-            st.set_viewing_text("読み込み中…".into());
-            h.rpc(&format!("files.file:{path}"), "fs/readFile", json!({ "path": path }));
+            view_file(&app, &h, &path);
+        }
+    });
+    let (weak, h) = (app.as_weak(), host.clone());
+    state.on_search(move |q| {
+        let Some(app) = weak.upgrade() else { return };
+        let q = q.trim().to_string();
+        let root = DATA.with(|d| d.borrow().root.clone());
+        if q.is_empty() || root.is_empty() {
+            DATA.with(|d| d.borrow_mut().found.clear());
+            app.global::<FilesState>().set_results(ModelRc::from(Rc::new(VecModel::<slint::SharedString>::default())));
+            return;
+        }
+        h.rpc(&format!("files.search|{q}"), "fuzzyFileSearch", json!({ "query": q, "roots": [root], "cancellationToken": null }));
+    });
+    let (weak, h) = (app.as_weak(), host.clone());
+    state.on_open_result(move |i| {
+        let Some(app) = weak.upgrade() else { return };
+        if let Some(path) = DATA.with(|d| d.borrow().found.get(i.max(0) as usize).cloned()) {
+            view_file(&app, &h, &path);
+        }
+    });
+    let weak = app.as_weak();
+    state.on_open_external(move || {
+        let Some(app) = weak.upgrade() else { return };
+        let path = DATA.with(|d| d.borrow().viewing.clone());
+        if path.is_empty() {
+            return;
+        }
+        if let Err(e) = open_external(&path) {
+            app.global::<FilesState>().set_viewing_text(e.into());
         }
     });
     let weak = app.as_weak();
@@ -141,6 +206,33 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
                 }
                 Err(e) => app.global::<FilesState>().set_error(e.as_str().into()),
             }
+        }
+        Event::Rpc { tag, result } if tag.starts_with("files.search|") => {
+            // An answer to a search that is no longer what the box says is ignored.
+            let query = &tag["files.search|".len()..];
+            if app.global::<FilesState>().get_query().trim() != query {
+                return;
+            }
+            let Ok(v) = result else { return };
+            let mut abs = Vec::new();
+            let mut rel = Vec::new();
+            for f in v.get("files").and_then(Value::as_array).into_iter().flatten() {
+                if f.get("match_type").and_then(Value::as_str) != Some("file") {
+                    continue;
+                }
+                let root = f.get("root").and_then(Value::as_str).unwrap_or("");
+                let path = f.get("path").and_then(Value::as_str).unwrap_or("");
+                if path.starts_with(".git/") || path.starts_with(".git\\") {
+                    continue;
+                }
+                abs.push(join(root, path));
+                rel.push(slint::SharedString::from(path));
+                if abs.len() == 50 {
+                    break;
+                }
+            }
+            DATA.with(|d| d.borrow_mut().found = abs);
+            app.global::<FilesState>().set_results(ModelRc::from(Rc::new(VecModel::from(rel))));
         }
         Event::Rpc { tag, result } if tag.starts_with("files.file:") => {
             let st = app.global::<FilesState>();

@@ -50,7 +50,12 @@ pub struct Screen {
     pub cursor_visible: bool,
     /// Bytes the emulator answers with (cursor position report, device attributes).
     pub replies: Vec<u8>,
+    /// Lines that scrolled off the top, oldest first.
+    scrollback: Vec<Vec<Cell>>,
 }
+
+/// How many lines that scrolled off are kept.
+const SCROLLBACK: usize = 3000;
 
 const PALETTE: [u32; 16] = [
     0x000000, 0xcd3131, 0x0dbc79, 0xe5e510, 0x2472c8, 0xbc3fbc, 0x11a8cd, 0xe5e5e5, 0x666666, 0xf14c4c, 0x23d18b,
@@ -107,7 +112,13 @@ impl Screen {
             pending: Vec::new(),
             cursor_visible: true,
             replies: Vec::new(),
+            scrollback: Vec::new(),
         }
+    }
+
+    /// How far the view can be scrolled back, in lines.
+    pub fn scrollback_len(&self) -> usize {
+        self.scrollback.len()
     }
 
     pub fn resize(&mut self, cols: usize, rows: usize) {
@@ -118,7 +129,8 @@ impl Screen {
         // Keep the lines nearest the cursor when the screen gets shorter.
         if rows < self.rows && self.cy >= rows {
             let drop = self.cy + 1 - rows;
-            self.grid.drain(0..drop);
+            let gone: Vec<Vec<Cell>> = self.grid.drain(0..drop).collect();
+            self.scrollback.extend(gone);
             self.cy -= drop;
         }
         self.grid.resize(rows, vec![BLANK; self.cols]);
@@ -263,7 +275,13 @@ impl Screen {
 
     fn scroll_up(&mut self, n: usize) {
         for _ in 0..n.min(self.bottom - self.top + 1) {
-            self.grid.remove(self.top);
+            let gone = self.grid.remove(self.top);
+            if self.top == 0 {
+                self.scrollback.push(gone);
+                if self.scrollback.len() > SCROLLBACK {
+                    self.scrollback.remove(0);
+                }
+            }
             self.grid.insert(self.bottom, vec![BLANK; self.cols]);
         }
     }
@@ -457,11 +475,25 @@ impl Screen {
 
     /// The screen as lines of same-style runs. The cursor cell is drawn as an inverse run.
     pub fn lines(&self) -> Vec<Vec<Run>> {
+        self.lines_at(0)
+    }
+
+    /// The rows on view when the view is scrolled `offset` lines back (0 is the live screen).
+    fn view_rows(&self, offset: usize) -> Vec<&Vec<Cell>> {
+        let all = self.scrollback.len() + self.grid.len();
+        let offset = offset.min(self.scrollback.len());
+        let start = all - self.rows - offset;
+        self.scrollback.iter().chain(self.grid.iter()).skip(start).take(self.rows).collect()
+    }
+
+    /// The same, as lines of runs; the cursor shows only on the live screen.
+    pub fn lines_at(&self, offset: usize) -> Vec<Vec<Run>> {
+        let live = offset == 0;
         let mut out = Vec::with_capacity(self.rows);
-        for (y, row) in self.grid.iter().enumerate() {
+        for (y, row) in self.view_rows(offset).into_iter().enumerate() {
             let last = row.iter().rposition(|c| c.ch != ' ' || c.style.bg.is_some() || c.style.inverse);
             let mut end = last.map(|l| l + 1).unwrap_or(0);
-            let show_cursor = self.cursor_visible && y == self.cy;
+            let show_cursor = live && self.cursor_visible && y == self.cy;
             if show_cursor {
                 end = end.max(self.cx + 1);
             }
@@ -477,13 +509,21 @@ impl Screen {
                     continue;
                 }
                 match runs.last_mut() {
-                    Some(r) if r.style == style && !(show_cursor && x == self.cx + 1 && false) => r.text.push(cell.ch),
+                    Some(r) if r.style == style => r.text.push(cell.ch),
                     _ => runs.push(Run { text: cell.ch.to_string(), style }),
                 }
             }
             out.push(runs);
         }
         out
+    }
+
+    /// The rows on view as plain text, for copying.
+    pub fn text_at(&self, offset: usize) -> Vec<String> {
+        self.view_rows(offset)
+            .into_iter()
+            .map(|r| r.iter().filter(|c| !c.tail).map(|c| c.ch).collect::<String>().trim_end().to_string())
+            .collect()
     }
 
     #[cfg(test)]
@@ -518,6 +558,17 @@ mod tests {
         let runs = &s.lines()[0];
         assert_eq!(runs.len(), 3);
         assert_eq!(runs[1].style.fg, Some(0xcd3131));
+    }
+
+    #[test]
+    fn scrollback_keeps_what_scrolled_off() {
+        let mut s = Screen::new(5, 2);
+        s.feed(b"one\r\ntwo\r\nthree\r\nfour");
+        assert_eq!(s.text(), vec!["three", "four"]);
+        assert_eq!(s.scrollback_len(), 2);
+        assert_eq!(s.text_at(1), vec!["two", "three"]);
+        assert_eq!(s.text_at(2), vec!["one", "two"]);
+        assert_eq!(s.text_at(9), vec!["one", "two"]);
     }
 
     #[test]

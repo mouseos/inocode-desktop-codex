@@ -14,6 +14,7 @@ export struct TermRun {
 
 export struct TermLine {
     runs: [TermRun],
+    selected: bool,
 }
 
 export struct TermTab {
@@ -31,6 +32,12 @@ export global TerminalState {
     callback close(int);
     callback key(string, bool, bool, bool);
     callback viewport(length, length);
+    // Lines to scroll back (positive) or forward; rows selected with the mouse; copy and paste.
+    callback scroll(int);
+    callback sel-start(int);
+    callback sel-update(int);
+    callback copy();
+    callback paste();
 }
 
 export component TerminalView inherits Rectangle {
@@ -74,6 +81,12 @@ export component TerminalView inherits Rectangle {
                 icon-size: 16px;
                 clicked => { TerminalState.new-terminal(); }
             }
+            Rectangle { horizontal-stretch: 1; }
+            IconButton {
+                glyph: Glyph.copy;
+                icon-size: 15px;
+                clicked => { TerminalState.copy(); }
+            }
         }
         body := Rectangle {
             vertical-stretch: 1;
@@ -88,7 +101,21 @@ export component TerminalView inherits Rectangle {
                 }
                 TouchArea {
                     mouse-cursor: MouseCursor.text;
-                    clicked => { input.focus(); }
+                    pointer-event(e) => {
+                        if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                            input.focus();
+                            TerminalState.sel-start(Math.floor((self.mouse-y - 6px) / 17px));
+                        }
+                    }
+                    moved => {
+                        if (self.pressed) {
+                            TerminalState.sel-update(Math.floor((self.mouse-y - 6px) / 17px));
+                        }
+                    }
+                    scroll-event(e) => {
+                        TerminalState.scroll(e.delta-y > 0px ? 3 : -3);
+                        accept
+                    }
                 }
                 VerticalLayout {
                     padding-left: 8px;
@@ -97,6 +124,7 @@ export component TerminalView inherits Rectangle {
                     alignment: start;
                     for line in TerminalState.lines: Rectangle {
                         height: 17px;
+                        background: line.selected ? Theme.selected : transparent;
                         HorizontalLayout {
                             alignment: start;
                             for r in line.runs: Rectangle {
