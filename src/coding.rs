@@ -24,6 +24,7 @@ pub(crate) fn to_approval(info: &client::ApprovalInfo) -> Approval {
         lines: ModelRc::from(Rc::new(VecModel::from(lines))),
         long: info.long,
         simple: info.simple,
+        persist_always: info.persist_always,
     }
 }
 

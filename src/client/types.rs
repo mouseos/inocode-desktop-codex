@@ -264,6 +264,8 @@ pub struct ApprovalInfo {
     /// The body is long: it can be opened to read all of it.
     pub long: bool,
     pub simple: bool,
+    /// An MCP tool approval the server can remember for good ("always" is among its persist choices).
+    pub persist_always: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -317,6 +319,8 @@ pub enum Event {
 pub enum Decision {
     Accept,
     AcceptForSession,
+    /// Allow, and the server remembers it (MCP tool approvals: persist "always").
+    AcceptAlways,
     Decline,
     Cancel,
 }
@@ -326,6 +330,7 @@ impl Decision {
         match s {
             "accept" => Decision::Accept,
             "session" => Decision::AcceptForSession,
+            "always" => Decision::AcceptAlways,
             "cancel" => Decision::Cancel,
             _ => Decision::Decline,
         }
@@ -334,6 +339,7 @@ impl Decision {
         match self {
             Decision::Accept => "accept",
             Decision::AcceptForSession => "acceptForSession",
+            Decision::AcceptAlways => "accept",
             Decision::Decline => "decline",
             Decision::Cancel => "cancel",
         }

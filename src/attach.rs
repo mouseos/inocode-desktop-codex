@@ -266,6 +266,18 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
             on_text(&app, &t);
         }
     });
+    // Tab: a command goes into the composer with a space after it (Enter runs it); a file is taken
+    // as it is.
+    let weak = app.as_weak();
+    app.global::<AttachState>().on_complete_suggestion(move |id| {
+        let Some(app) = weak.upgrade() else { return };
+        if let Some(cmd) = id.strip_prefix("slash:") {
+            app.set_prompt(format!("{cmd} ").into());
+            set_suggestions(&app, "", Vec::new());
+        } else {
+            app.global::<AttachState>().invoke_pick_suggestion(id);
+        }
+    });
     let weak = app.as_weak();
     app.global::<AttachState>().on_pick_suggestion(move |id| {
         let Some(app) = weak.upgrade() else { return };

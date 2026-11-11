@@ -719,7 +719,7 @@ pub(super) fn open_url(url: &str) {
 pub(super) fn approval_result(method: &str, params: &Value, decision: Decision) -> Value {
     if method == "item/permissions/requestApproval" {
         return match decision {
-            Decision::Accept | Decision::AcceptForSession => json!({
+            Decision::Accept | Decision::AcceptForSession | Decision::AcceptAlways => json!({
                 "permissions": params.get("permissions").cloned().unwrap_or_else(|| json!({})),
                 "scope": if decision == Decision::AcceptForSession { "session" } else { "turn" },
             }),
@@ -728,13 +728,17 @@ pub(super) fn approval_result(method: &str, params: &Value, decision: Decision) 
     }
     if method == "mcpServer/elicitation/request" {
         let action = match decision {
-            Decision::Accept | Decision::AcceptForSession => "accept",
+            Decision::Accept | Decision::AcceptForSession | Decision::AcceptAlways => "accept",
             Decision::Decline => "decline",
             Decision::Cancel => "cancel",
         };
         // "Allow for this session" of a tool approval: the server is told to remember it.
         let is_tool = params.pointer("/_meta/codex_approval_kind").and_then(Value::as_str) == Some("mcp_tool_call");
-        let meta = if is_tool && decision == Decision::AcceptForSession { json!({ "persist": "session" }) } else { Value::Null };
+        let meta = match (is_tool, decision) {
+            (true, Decision::AcceptForSession) => json!({ "persist": "session" }),
+            (true, Decision::AcceptAlways) => json!({ "persist": "always" }),
+            _ => Value::Null,
+        };
         return json!({ "action": action, "content": null, "_meta": meta });
     }
     json!({ "decision": decision.wire() })

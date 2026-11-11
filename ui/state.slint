@@ -32,6 +32,8 @@ export struct Approval {
     long: bool,
     // An MCP input request: decline or continue only.
     simple: bool,
+    // An MCP tool approval the server can remember for good
+    persist-always: bool,
 }
 
 export struct Message {

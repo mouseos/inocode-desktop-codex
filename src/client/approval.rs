@@ -151,6 +151,11 @@ pub fn approval_info(method: &str, params: &Value, changes: Option<&Value>) -> O
             if meta.and_then(|m| m.get("codex_approval_kind")).and_then(Value::as_str) == Some("mcp_tool_call") {
                 let tool = meta.and_then(|m| m.get("tool_title").or_else(|| m.get("tool_name"))).and_then(Value::as_str).unwrap_or("?");
                 info.title = format!("{server} のツール「{tool}」を実行しますか？");
+                info.persist_always = match meta.and_then(|m| m.get("persist")) {
+                    Some(Value::Array(a)) => a.iter().any(|v| v.as_str() == Some("always")),
+                    Some(Value::String(s)) => s == "always",
+                    _ => false,
+                };
                 if let Some(args) = meta.and_then(|m| m.get("tool_params")).filter(|a| !a.is_null()) {
                     let pretty = serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string());
                     info.summary = "引数".into();

@@ -111,6 +111,7 @@ component ApprovalCard inherits Rectangle {
             alignment: end;
             ApprovalButton { label: root.item.simple ? "辞退" : "拒否"; clicked => { root.decide(root.item.key, "decline"); } }
             if !root.item.simple: ApprovalButton { label: "このセッションで許可"; clicked => { root.decide(root.item.key, "session"); } }
+            if root.item.persist-always: ApprovalButton { label: "常に許可"; clicked => { root.decide(root.item.key, "always"); } }
             ApprovalButton { label: root.item.simple ? "続行" : "許可"; primary: true; clicked => { root.decide(root.item.key, "accept"); } }
         }
     }
@@ -207,8 +208,12 @@ component Composer inherits VerticalLayout {
                         AttachState.suggest-index = max(AttachState.suggest-index - 1, 0);
                         return accept;
                     }
-                    if ((event.text == Key.Return && !event.modifiers.shift) || event.text == Key.Tab) {
+                    if (event.text == Key.Return && !event.modifiers.shift) {
                         AttachState.pick-suggestion(AttachState.suggestions[min(AttachState.suggest-index, AttachState.suggestions.length - 1)].id);
+                        return accept;
+                    }
+                    if (event.text == Key.Tab) {
+                        AttachState.complete-suggestion(AttachState.suggestions[min(AttachState.suggest-index, AttachState.suggestions.length - 1)].id);
                         return accept;
                     }
                     if (event.text == Key.Escape) {

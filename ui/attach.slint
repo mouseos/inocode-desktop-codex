@@ -34,6 +34,8 @@ export global AttachState {
     callback text-changed(string);
     callback remove(string);
     callback pick-suggestion(string);
+    // Tab: put the suggestion in the composer (a command is not run; Enter runs it).
+    callback complete-suggestion(string);
     // The "+" button: window position for the popup menu.
     callback open-plus(length, length);
     // "別のフォルダを選択…" in the work-place chip.
