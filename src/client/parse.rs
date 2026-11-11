@@ -732,7 +732,10 @@ pub(super) fn approval_result(method: &str, params: &Value, decision: Decision) 
             Decision::Decline => "decline",
             Decision::Cancel => "cancel",
         };
-        return json!({ "action": action, "content": null, "_meta": null });
+        // "Allow for this session" of a tool approval: the server is told to remember it.
+        let is_tool = params.pointer("/_meta/codex_approval_kind").and_then(Value::as_str) == Some("mcp_tool_call");
+        let meta = if is_tool && decision == Decision::AcceptForSession { json!({ "persist": "session" }) } else { Value::Null };
+        return json!({ "action": action, "content": null, "_meta": meta });
     }
     json!({ "decision": decision.wire() })
 }

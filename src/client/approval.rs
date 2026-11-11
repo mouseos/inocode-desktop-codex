@@ -146,6 +146,18 @@ pub fn approval_info(method: &str, params: &Value, changes: Option<&Value>) -> O
         }
         "mcpServer/elicitation/request" => {
             let server = text(params, "serverName").unwrap_or("MCP");
+            // The approval of a call of an MCP tool (the server asks before it runs the tool).
+            let meta = params.get("_meta");
+            if meta.and_then(|m| m.get("codex_approval_kind")).and_then(Value::as_str) == Some("mcp_tool_call") {
+                let tool = meta.and_then(|m| m.get("tool_title").or_else(|| m.get("tool_name"))).and_then(Value::as_str).unwrap_or("?");
+                info.title = format!("{server} のツール「{tool}」を実行しますか？");
+                if let Some(args) = meta.and_then(|m| m.get("tool_params")).filter(|a| !a.is_null()) {
+                    let pretty = serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string());
+                    info.summary = "引数".into();
+                    info.lines = pretty.lines().take(MAX_LINES).map(|l| (l.to_string(), PLAIN)).collect();
+                }
+                return Some(info);
+            }
             info.title = format!("{server} が入力を求めています");
             let mut d = text(params, "message").unwrap_or("").to_string();
             if let Some(u) = text(params, "url") {
@@ -174,13 +186,21 @@ pub fn elicitation_questions(params: &Value) -> Option<Vec<QuestionInfo>> {
         return None;
     }
     let message = text(params, "message").unwrap_or("").trim().to_string();
+    // the required fields first, then the others
+    let required: Vec<&str> = params
+        .get("requestedSchema")
+        .and_then(|s| s.get("required"))
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let mut ordered: Vec<(&String, &Value)> = props.iter().collect();
+    ordered.sort_by_key(|(name, _)| !required.contains(&name.as_str()));
     let mut out = Vec::new();
-    for (i, (name, p)) in props.iter().enumerate() {
+    for (i, (name, p)) in ordered.into_iter().enumerate() {
         let title = text(p, "title").unwrap_or(name).to_string();
-        let desc = text(p, "description").unwrap_or("").to_string();
-        let mut question = if desc.is_empty() { title.clone() } else { desc };
+        let mut question = text(p, "description").unwrap_or("").to_string();
         if i == 0 && !message.is_empty() {
-            question = format!("{message}\n{question}");
+            question = if question.is_empty() { message.clone() } else { format!("{message}\n{question}") };
         }
         out.push(QuestionInfo { id: name.clone(), header: title, question, options: elicitation_options(p).into_iter().map(|(label, _)| label).collect(), secret: false });
     }
@@ -360,6 +380,20 @@ mod tests {
         let skipped = elicitation_result(&p, &[("name".to_string(), vec![])]);
         assert_eq!(skipped["action"], "decline");
         assert!(elicitation_questions(&json!({ "mode": "url", "url": "https://x" })).is_none());
+    }
+
+    #[test]
+    fn an_mcp_tool_approval_names_the_tool_and_shows_its_arguments() {
+        let p = json!({
+            "serverName": "demo", "mode": "form", "message": "Allow the demo MCP server to run tool \"ask\"?",
+            "_meta": { "codex_approval_kind": "mcp_tool_call", "persist": ["session", "always"], "tool_name": "ask", "tool_params": { "q": "x" } },
+            "requestedSchema": { "type": "object", "properties": {} }
+        });
+        assert!(elicitation_questions(&p).is_none());
+        let i = approval_info("mcpServer/elicitation/request", &p, None).unwrap();
+        assert!(i.title.contains("demo") && i.title.contains("ask"), "{}", i.title);
+        assert!(!i.simple);
+        assert!(i.lines.iter().any(|(l, _)| l.contains("\"q\"")));
     }
 
     #[test]

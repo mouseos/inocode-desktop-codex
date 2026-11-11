@@ -244,6 +244,29 @@ pub(crate) fn install(app: &AppWindow) {
             extra.push(t);
         }
     }
+    // INOCODE_GUI_ELICIT=<file>: the params of an mcpServer/elicitation/request, shown the way the
+    // server's request is (a form as questions, a tool approval as a card).
+    if let Ok(file) = std::env::var("INOCODE_GUI_ELICIT") {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 1), move || {
+            let Some(app) = weak.upgrade() else { return };
+            let Ok(text) = std::fs::read_to_string(&file) else { return };
+            let Ok(params) = serde_json::from_str::<serde_json::Value>(&text) else { return };
+            let event = match crate::client::elicitation_questions(&params) {
+                Some(items) => Event::Questions { key: "elicit-demo".into(), items },
+                None => match crate::client::approval_info("mcpServer/elicitation/request", &params, None) {
+                    Some(mut info) => {
+                        info.key = "elicit-demo".into();
+                        Event::Approval(info)
+                    }
+                    None => return,
+                },
+            };
+            STATE.with(|s| crate::events::apply(&app, s, event));
+        });
+        extra.push(t);
+    }
     // INOCODE_GUI_PROMPT=<text>: a real turn. Once the app is connected (and INOCODE_GUI_MODEL=<id or
     // name>, when given, is chosen) the text goes the way a typed message goes (the composer's
     // submit: the same turn/start, with summary). INOCODE_GUI_SNAPSHOT_EVERY=<seconds> also writes
