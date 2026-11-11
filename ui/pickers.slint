@@ -26,6 +26,11 @@ export struct IntelligenceState {
     effort-label: string,
     models: [MenuRow],
     loading: bool,
+    // The uses to narrow the list by ("すべて" first), the chosen one, and the attribution of the data
+    uses-a: [string],
+    uses-b: [string],
+    use-index: int,
+    credit: string,
     // No model is chosen: nothing can be sent
     missing: bool,
     ultra-warning: bool,
@@ -210,6 +215,7 @@ export component IntelligenceMenu inherits Rectangle {
     callback search(string);
     callback pick-effort(int);
     callback pick-model(int);
+    callback pick-use(int);
     callback reset;
 
     public function open() { pop.show(); }
@@ -276,6 +282,31 @@ export component IntelligenceMenu inherits Rectangle {
                     }
                 }
 
+                // The use the models are narrowed and ordered by (two rows of chips).
+                if root.state.uses-a.length > 1: HorizontalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    for u[i] in root.state.uses-a: Rectangle {
+                        height: 24px;
+                        width: ua.preferred-width + 16px;
+                        border-radius: 12px;
+                        background: i == root.state.use-index ? Theme.fg : Theme.hover;
+                        ua := Text { text: u; color: i == root.state.use-index ? Theme.surface : Theme.fg; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                        TouchArea { mouse-cursor: pointer; clicked => { root.pick-use(i); } }
+                    }
+                }
+                if root.state.uses-b.length > 0: HorizontalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    for u[i] in root.state.uses-b: Rectangle {
+                        height: 24px;
+                        width: ub.preferred-width + 16px;
+                        border-radius: 12px;
+                        background: i + 4 == root.state.use-index ? Theme.fg : Theme.hover;
+                        ub := Text { text: u; color: i + 4 == root.state.use-index ? Theme.surface : Theme.fg; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                        TouchArea { mouse-cursor: pointer; clicked => { root.pick-use(i + 4); } }
+                    }
+                }
                 SectionLabel { text: "モデルを選択"; }
                 if root.state.loading: Text {
                     text: "モデルを読み込み中…";
@@ -298,6 +329,12 @@ export component IntelligenceMenu inherits Rectangle {
                     }
                 }
 
+                if root.state.credit != "": Text {
+                    text: root.state.credit;
+                    color: Theme.fg-tertiary;
+                    font-size: 10px;
+                    wrap: word-wrap;
+                }
                 if root.state.effort-enabled: Separator { }
                 if root.state.effort-enabled: Rectangle {
                     height: 28px;

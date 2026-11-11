@@ -7,6 +7,7 @@ use crate::*;
 pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
     crate::sidebar::register(app, handle);
     crate::model_init::register(handle);
+    crate::models_enrich::register(handle);
     let weak = app.as_weak();
     let h = handle.clone();
     app.on_submit(move |text| {
@@ -119,6 +120,16 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         if switch_thread {
             h.send(Command::NewThread);
         }
+    });
+    let weak = app.as_weak();
+    app.global::<AppState>().on_pick_use(move |i| {
+        let Some(app) = weak.upgrade() else { return };
+        STATE.with(|s| {
+            let mut st = s.borrow_mut();
+            let uses = crate::models_enrich::offered_uses(&st);
+            st.use_filter = if i <= 0 { None } else { uses.get(i as usize - 1).map(|u| u.to_string()) };
+            refresh_pickers(&app, &st);
+        });
     });
     let weak = app.as_weak();
     app.global::<AppState>().on_search_model(move |q| {

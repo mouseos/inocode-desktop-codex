@@ -259,6 +259,7 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
         // Rpc / Notify are delivered to the screen tabs (src/tabs) before apply().
         Event::Rpc { tag, result } => {
             crate::model_init::on_rpc(app, &tag, &result);
+            crate::models_enrich::on_rpc(app, &tag, &result);
             crate::prompts::on_rpc(app, &tag, &result);
             crate::attach::on_rpc(app, &tag, &result);
             crate::panel_data::on_rpc(app, &tag, &result);

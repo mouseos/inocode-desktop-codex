@@ -172,6 +172,7 @@ component Composer inherits VerticalLayout {
     callback interrupt;
     callback search-model(string);
     callback pick-effort(int);
+    callback pick-use(int);
     callback pick-model(int);
     callback reset-model;
     callback pick-perm(int);
@@ -267,6 +268,7 @@ component Composer inherits VerticalLayout {
                         state: root.intelligence;
                         search(q) => { root.search-model(q); }
                         pick-effort(i) => { root.pick-effort(i); }
+                        pick-use(i) => { root.pick-use(i); }
                         pick-model(i) => { root.pick-model(i); }
                         reset => { root.reset-model(); }
                     }
@@ -562,6 +564,7 @@ export component Home inherits Rectangle {
                         fresh: !root.chat-active;
                         search-model(q) => { AppState.search-model(q); }
                         pick-effort(i) => { AppState.pick-effort(i); }
+                        pick-use(i) => { AppState.pick-use(i); }
                         pick-model(i) => { AppState.pick-model(i); }
                         reset-model => { AppState.reset-model(); }
                         pick-perm(i) => { AppState.pick-perm(i); }

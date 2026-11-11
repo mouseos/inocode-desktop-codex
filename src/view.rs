@@ -53,7 +53,9 @@ pub(crate) fn refresh_pickers(app: &AppWindow, st: &State) {
                 Kind::Normal
             };
             let on = sel.map(|s| s.id == m.id && s.provider == m.provider).unwrap_or(false) && mode == *kind;
-            row(&label, "", on, false)
+            // The ranking for the chosen use and the price go under the name of the model itself.
+            let desc = if *kind == Kind::Normal { crate::models_enrich::describe(st, m) } else { String::new() };
+            row(&label, &desc, on, false)
         })
         .collect();
     let trigger = match sel {
@@ -70,6 +72,11 @@ pub(crate) fn refresh_pickers(app: &AppWindow, st: &State) {
         effort_label: eff_text.clone().into(),
         models: rows(model_rows),
         loading: !st.models_loaded,
+        uses_a: strings(crate::models_enrich::use_labels(st).into_iter().take(4)),
+        uses_b: strings(crate::models_enrich::use_labels(st).into_iter().skip(4)),
+        use_index: st.use_filter.as_deref().and_then(|u| crate::models_enrich::offered_uses(st).iter().position(|x| *x == u)).map(|i| i as i32 + 1).unwrap_or(0),
+        // The benchmark data comes with the attribution its sources ask for.
+        credit: if st.use_filter.as_deref().map(|u| u != "price").unwrap_or(false) { st.enrich_credits.join(" / ") } else { String::new() }.into(),
         ultra_warning: eff.as_deref() == Some("ultra"),
         can_reset: st.settings.effort.is_some() || st.settings.service_tier.is_some(),
         missing: st.models_loaded && sel.is_none(),

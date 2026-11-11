@@ -57,6 +57,27 @@ pub(crate) fn install(app: &AppWindow) {
         });
         extra.push(t);
     }
+    // INOCODE_GUI_ENRICH=<file>: an inocode/models/enrich reply (the `response`) for the picker;
+    // INOCODE_GUI_USE=<use> chooses the use the list is ordered by.
+    if let Ok(file) = std::env::var("INOCODE_GUI_ENRICH") {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 2), move || {
+            let Some(app) = weak.upgrade() else { return };
+            let Ok(text) = std::fs::read_to_string(&file) else { return };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else { return };
+            let (map, credits, uses) = crate::models_enrich::parse(v.get("response").unwrap_or(&v));
+            STATE.with(|s| {
+                let mut st = s.borrow_mut();
+                st.enrich = map;
+                st.enrich_credits = credits;
+                st.use_map = uses;
+                st.use_filter = std::env::var("INOCODE_GUI_USE").ok().filter(|u| !u.is_empty());
+                crate::view::refresh_pickers(&app, &st);
+            });
+        });
+        extra.push(t);
+    }
     // INOCODE_GUI_MODELS=<file>: a model/list reply (the `result`) that is shown as the list of
     // models; INOCODE_GUI_OPEN=picker opens the model popup.
     if let Ok(file) = std::env::var("INOCODE_GUI_MODELS") {

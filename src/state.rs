@@ -40,6 +40,12 @@ pub(crate) struct State {
     pub(crate) provider_models: std::collections::HashMap<String, Vec<ModelInfo>>,
     /// The provider the open thread runs with (a thread keeps it): None until known.
     pub(crate) thread_provider: Option<String>,
+    /// What the picker knows of the models (benchmarks, prices), the attributions to show with
+    /// it, the uses that have a metric, and the use the list is ordered by (None: all).
+    pub(crate) enrich: std::collections::HashMap<(String, String), crate::models_enrich::Enrich>,
+    pub(crate) enrich_credits: Vec<String>,
+    pub(crate) use_map: Vec<String>,
+    pub(crate) use_filter: Option<String>,
     /// A thread was just opened: the model it reports is the one to show (and use).
     pub(crate) sync_model: bool,
     /// The open thread is an existing one: what it has recorded is the choice, even none.
@@ -143,11 +149,15 @@ pub(crate) fn shown_models(st: &State) -> Vec<Item<'_>> {
     }
     let mut rows = Vec::new();
     for p in providers {
-        let hits: Vec<&&ModelInfo> = visible
+        let mut hits: Vec<&&ModelInfo> = visible
             .iter()
             .filter(|m| m.provider == p)
             .filter(|m| q.is_empty() || m.name.to_lowercase().contains(&q) || m.id.to_lowercase().contains(&q))
             .collect();
+        // For a use that is chosen: the best first, the ones that were not measured last.
+        if st.use_filter.is_some() {
+            hits.sort_by(|a, b| crate::models_enrich::order_key(st, a).partial_cmp(&crate::models_enrich::order_key(st, b)).unwrap_or(std::cmp::Ordering::Equal));
+        }
         if hits.is_empty() {
             continue;
         }

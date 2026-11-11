@@ -19,6 +19,7 @@ pub(crate) fn register(handle: &Rc<client::Handle>) {
 pub(crate) fn on_models(app: &AppWindow) {
     apply(app);
     refresh_providers();
+    crate::models_enrich::request();
     if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
         h.send(Command::Rpc { tag: "model.config".into(), method: "config/read".into(), params: json!({ "includeLayers": false }) });
     }
@@ -69,6 +70,7 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
             refresh_pickers(app, &st);
         });
         apply(app);
+        crate::models_enrich::request();
         return;
     }
     if tag != "model.config" {

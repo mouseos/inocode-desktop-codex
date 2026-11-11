@@ -6,6 +6,7 @@ mod coding;
 mod client;
 mod accounts_page;
 mod model_init;
+mod models_enrich;
 mod attach;
 mod callbacks;
 mod diff_rows;
