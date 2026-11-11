@@ -27,6 +27,8 @@ mod reply;
 mod settings_page;
 mod sidebar;
 mod snapshot;
+mod settings_mcp;
+mod settings_plugins;
 mod state;
 mod thread_stats;
 mod tabs;

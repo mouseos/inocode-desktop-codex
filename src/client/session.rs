@@ -360,7 +360,13 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                 }
             }
             Command::Answer { key, answers } => {
-                if let Some((id, _, _)) = self.approvals.remove(&key) {
+                if let Some((id, method, params)) = self.approvals.remove(&key) {
+                    if method == "mcpServer/elicitation/request" {
+                        let result = approval::elicitation_result(&params, &answers);
+                        self.conn.send(json!({ "id": id, "result": result }))?;
+                        (self.on_event)(Event::ApprovalResolved(key));
+                        return Ok(None);
+                    }
                     let mut map = serde_json::Map::new();
                     for (qid, list) in answers {
                         map.insert(qid, json!({ "answers": list }));

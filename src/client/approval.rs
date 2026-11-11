@@ -1,8 +1,8 @@
 //! What an approval card shows: the full command, the diff of a file change, the extra
 //! permissions that are asked for. Pure functions over the request's parameters (tested).
 
-use super::ApprovalInfo;
-use serde_json::Value;
+use super::{ApprovalInfo, QuestionInfo};
+use serde_json::{json, Value};
 
 /// Line kinds of `ApprovalInfo::lines`.
 pub const PLAIN: i32 = 0;
@@ -161,6 +161,86 @@ pub fn approval_info(method: &str, params: &Value, changes: Option<&Value>) -> O
     Some(info)
 }
 
+/// The fields an MCP server asks for (mcpServer/elicitation/request in form mode) as questions of the
+/// question card: one per property of requestedSchema, with the choices of an enum or a boolean.
+/// None when there is no form (a URL, or no properties): that stays the plain card.
+pub fn elicitation_questions(params: &Value) -> Option<Vec<QuestionInfo>> {
+    let mode = text(params, "mode").unwrap_or("form");
+    if !matches!(mode, "form" | "openai/form" | "openaiForm") {
+        return None;
+    }
+    let props = params.get("requestedSchema")?.get("properties")?.as_object()?;
+    if props.is_empty() {
+        return None;
+    }
+    let message = text(params, "message").unwrap_or("").trim().to_string();
+    let mut out = Vec::new();
+    for (i, (name, p)) in props.iter().enumerate() {
+        let title = text(p, "title").unwrap_or(name).to_string();
+        let desc = text(p, "description").unwrap_or("").to_string();
+        let mut question = if desc.is_empty() { title.clone() } else { desc };
+        if i == 0 && !message.is_empty() {
+            question = format!("{message}\n{question}");
+        }
+        out.push(QuestionInfo { id: name.clone(), header: title, question, options: elicitation_options(p).into_iter().map(|(label, _)| label).collect(), secret: false });
+    }
+    Some(out)
+}
+
+/// (shown, sent) of the choices of one property.
+fn elicitation_options(p: &Value) -> Vec<(String, Value)> {
+    if let Some(list) = p.get("oneOf").or_else(|| p.get("anyOf")).and_then(Value::as_array) {
+        return list
+            .iter()
+            .filter_map(|o| {
+                let c = o.get("const")?.clone();
+                let label = text(o, "title").map(str::to_string).unwrap_or_else(|| c.as_str().map(str::to_string).unwrap_or_else(|| c.to_string()));
+                Some((label, c))
+            })
+            .collect();
+    }
+    if let Some(list) = p.get("enum").and_then(Value::as_array) {
+        let names: Vec<String> = p.get("enumNames").and_then(Value::as_array).map(|a| a.iter().filter_map(|n| n.as_str().map(str::to_string)).collect()).unwrap_or_default();
+        return list
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (names.get(i).cloned().unwrap_or_else(|| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())), v.clone()))
+            .collect();
+    }
+    if p.get("type").and_then(Value::as_str) == Some("boolean") {
+        return vec![("はい".into(), json!(true)), ("いいえ".into(), json!(false))];
+    }
+    Vec::new()
+}
+
+/// The answer to an elicitation from what the user answered: accepted with the fields they filled
+/// in; declined when they skipped every question.
+pub fn elicitation_result(params: &Value, answers: &[(String, Vec<String>)]) -> Value {
+    let props = params.get("requestedSchema").and_then(|s| s.get("properties")).and_then(Value::as_object);
+    let mut content = serde_json::Map::new();
+    for (id, list) in answers {
+        let Some(shown) = list.first().filter(|t| !t.trim().is_empty()) else { continue };
+        let Some(p) = props.and_then(|p| p.get(id)) else { continue };
+        let options = elicitation_options(p);
+        let value = if let Some((_, v)) = options.iter().find(|(label, _)| label == shown) {
+            v.clone()
+        } else {
+            match p.get("type").and_then(Value::as_str) {
+                Some("integer") => shown.trim().parse::<i64>().map(|n| json!(n)).unwrap_or_else(|_| json!(shown)),
+                Some("number") => shown.trim().parse::<f64>().map(|n| json!(n)).unwrap_or_else(|_| json!(shown)),
+                Some("boolean") => json!(matches!(shown.trim(), "true" | "はい" | "yes")),
+                _ => json!(shown),
+            }
+        };
+        content.insert(id.clone(), value);
+    }
+    if content.is_empty() {
+        json!({ "action": "decline", "content": null, "_meta": null })
+    } else {
+        json!({ "action": "accept", "content": content, "_meta": null })
+    }
+}
+
 /// A call of a tool that the client is to run (item/tool/call). This app registers none, so the
 /// call is answered as a failure the model can read; the screen shows a row about it.
 /// Returns (the response, the row's text, the row's body).
@@ -250,6 +330,36 @@ mod tests {
         let lines: Vec<&str> = i.lines.iter().map(|l| l.0.as_str()).collect();
         assert_eq!(lines, vec!["ネットワーク: 許可", "読み取り: C:/sdk", "書き込み: D:/w/out"]);
         assert!(i.detail.contains("理由: ビルド"));
+    }
+
+    #[test]
+    fn a_form_elicitation_is_asked_as_questions_and_answered_with_the_fields() {
+        let p = json!({
+            "serverName": "s", "mode": "form", "message": "設定を入力してください",
+            "requestedSchema": { "type": "object", "properties": {
+                "name": { "type": "string", "title": "名前" },
+                "count": { "type": "integer", "title": "件数" },
+                "ok": { "type": "boolean", "title": "実行する" },
+                "kind": { "type": "string", "enum": ["a", "b"] }
+            } }
+        });
+        let q = elicitation_questions(&p).unwrap();
+        assert_eq!(q.len(), 4);
+        assert!(q.iter().any(|x| x.id == "ok" && x.options == vec!["はい".to_string(), "いいえ".to_string()]));
+        let answers = vec![
+            ("name".to_string(), vec!["x".to_string()]),
+            ("count".to_string(), vec!["3".to_string()]),
+            ("ok".to_string(), vec!["はい".to_string()]),
+            ("kind".to_string(), vec![]),
+        ];
+        let r = elicitation_result(&p, &answers);
+        assert_eq!(r["action"], "accept");
+        assert_eq!(r["content"]["count"], 3);
+        assert_eq!(r["content"]["ok"], true);
+        assert!(r["content"].get("kind").is_none());
+        let skipped = elicitation_result(&p, &[("name".to_string(), vec![])]);
+        assert_eq!(skipped["action"], "decline");
+        assert!(elicitation_questions(&json!({ "mode": "url", "url": "https://x" })).is_none());
     }
 
     #[test]

@@ -79,4 +79,7 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
     }
     stats::event(app, host, event);
     goal::event(app, host, event);
+    if let Event::Notify { method, params } = event {
+        crate::settings_mcp::on_notify(app, method, params);
+    }
 }

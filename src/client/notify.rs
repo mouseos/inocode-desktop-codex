@@ -36,6 +36,15 @@ impl<F: Fn(Event)> Session<'_, F> {
             (self.on_event)(Event::Note { id: format!("dynamic-tool:{call}"), text: row, detail: body });
             return self.conn.send(json!({ "id": id, "result": result }));
         }
+        // A form an MCP server asks for is asked as questions, one field at a time.
+        if method == "mcpServer/elicitation/request" {
+            if let Some(items) = approval::elicitation_questions(&params) {
+                let key = id.to_string();
+                self.approvals.insert(key.clone(), (id, method.to_string(), params));
+                (self.on_event)(Event::Questions { key, items });
+                return Ok(());
+            }
+        }
         let changes = params.get("itemId").and_then(Value::as_str).and_then(|i| self.file_changes.get(i)).cloned();
         let Some(mut info) = approval::approval_info(method, &params, changes.as_ref()) else {
             return self.conn.send(json!({

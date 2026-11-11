@@ -25,6 +25,7 @@ enum S {
     Archive,
     Account,
     Hooks,
+    Plugins,
     Skills,
     Mcp,
     Inocode,
@@ -43,6 +44,7 @@ fn nav() -> Vec<(S, &'static str)> {
         (S::Head, "このコンピュータ"),
         (S::Hooks, "フック"),
         (S::Head, "連携"),
+        (S::Plugins, "プラグイン"),
         (S::Skills, "スキル"),
         (S::Mcp, "MCP サーバー"),
         (S::Head, "InoCode"),
@@ -60,6 +62,7 @@ fn glyph_of(s: S) -> &'static str {
         S::Archive => "\u{e149}",
         S::Account => "\u{e875}",
         S::Hooks => "\u{e86f}",
+        S::Plugins => "\u{e1bd}",
         S::Skills => "\u{e87b}",
         S::Mcp => "\u{e9f4}",
         S::Inocode => "\u{e1b1}",
@@ -132,13 +135,13 @@ thread_local! {
     static DATA: RefCell<Data> = RefCell::new(Data::default());
 }
 
-fn rpc(tag: &str, method: &str, params: Value) {
+pub(crate) fn rpc(tag: &str, method: &str, params: Value) {
     if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
         h.send(Command::Rpc { tag: tag.to_string(), method: method.to_string(), params });
     }
 }
 
-fn row(id: &str, title: &str, desc: &str, value: &str, kind: i32, on: bool) -> SRow {
+pub(crate) fn row(id: &str, title: &str, desc: &str, value: &str, kind: i32, on: bool) -> SRow {
     SRow {
         id: id.into(),
         title: title.into(),
@@ -163,6 +166,22 @@ fn choice(id: &str, title: &str, value: &str, opts: Vec<String>) -> SRow {
     r.cur = opts.iter().position(|o| o == value).unwrap_or(0) as i32;
     r.opts = strings(opts);
     r
+}
+
+/// Reads the MCP page again when it is the one that is open.
+pub(crate) fn refresh_mcp(app: &AppWindow) {
+    let (open, section) = (app.global::<SettingsPageState>().get_open(), DATA.with(|d| d.borrow().section));
+    if open && nav().get(section).map(|s| s.0) == Some(S::Mcp) {
+        rpc("spage.mcp", "mcpServerStatus/list", json!({}));
+    }
+}
+
+/// Reads the plugins again when that page is open.
+pub(crate) fn refresh_plugins(app: &AppWindow) {
+    let (open, section) = (app.global::<SettingsPageState>().get_open(), DATA.with(|d| d.borrow().section));
+    if open && nav().get(section).map(|s| s.0) == Some(S::Plugins) {
+        rpc("spage.plugins", "plugin/list", crate::settings_plugins::list_params());
+    }
 }
 
 fn set_rows(app: &AppWindow, rows: Vec<SRow>) {
@@ -415,6 +434,7 @@ fn load(app: &AppWindow, section: i32) {
             let cwd = STATE.with(|st| st.borrow().active_cwd.clone());
             rpc("spage.skills", "skills/list", json!({ "cwds": [cwd] }));
         }
+        S::Plugins => rpc("spage.plugins", "plugin/list", crate::settings_plugins::list_params()),
         S::Mcp => rpc("spage.mcp", "mcpServerStatus/list", json!({})),
         S::Inocode => {
             s.set_layout(1);
@@ -511,6 +531,8 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         match id.as_str() {
             "open-config" => open_file(&config_dir().join("config.toml")),
             "mcp-reload" => rpc("spage.mcp.reload", "config/mcpServer/reload", json!({})),
+            a if crate::settings_mcp::action(&app, a) => {}
+            a if crate::settings_plugins::action(&app, a) => {}
             "memory-reset" => crate::sidebar::ask_request(
                 &app,
                 "spage.memory.reset",
@@ -529,6 +551,9 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         }
     });
     st.on_row_toggle(|id, on| {
+        if crate::settings_mcp::toggle(id.as_str(), on) || crate::settings_plugins::toggle(id.as_str(), on) {
+            return;
+        }
         if let Some(path) = id.strip_prefix("skill:") {
             rpc("spage.skill.write", "skills/config/write", json!({ "path": path, "enabled": on }));
         } else if let Some(name) = id.strip_prefix("feat:") {
@@ -543,6 +568,9 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
     st.on_row_choose(move |id, index| {
         let Some(app) = weak.upgrade() else { return };
         let index = index as usize;
+        if crate::settings_mcp::choose(&app, id.as_str(), index) {
+            return;
+        }
         if id == "scheme" {
             remember(|p| p.scheme = index.min(2) as i32);
             let prefs = PREFS.with(|p| p.borrow().clone());
@@ -561,7 +589,9 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
             }
         }
     });
-    st.on_row_text(|_, _| {});
+    st.on_row_text(|id, text| {
+        let _ = crate::settings_mcp::text(id.as_str(), text.as_str()) || crate::settings_plugins::text(id.as_str(), text.as_str());
+    });
     let weak = app.as_weak();
     st.on_record(move |id, key, ctrl, shift, alt| {
         let Some(app) = weak.upgrade() else { return };
@@ -605,6 +635,9 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
 
 pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>) {
     if !tag.starts_with("spage.") {
+        return;
+    }
+    if crate::settings_mcp::on_rpc(app, tag, result) || crate::settings_plugins::on_rpc(app, tag, result) {
         return;
     }
     let v = match result {
@@ -721,27 +754,8 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
             }
             set_rows(app, rows);
         }
-        "spage.mcp" => {
-            let mut rows: Vec<SRow> = v
-                .get("data")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .map(|m| {
-                    row(
-                        "",
-                        m.get("name").and_then(Value::as_str).unwrap_or(""),
-                        "",
-                        m.get("runtimeStatus").and_then(Value::as_str).unwrap_or("接続済み"),
-                        0,
-                        false,
-                    )
-                })
-                .collect();
-            rows.push(row("mcp-reload", "設定を再読み込み", "", "再読み込み", 2, false));
-            rows.push(row("open-config", "config.toml", "", "ファイルを開く", 2, false));
-            set_rows(app, rows);
-        }
+        "spage.mcp" => set_rows(app, crate::settings_mcp::rows(v)),
+        "spage.plugins" => set_rows(app, crate::settings_plugins::rows(v)),
         "spage.mcp.reload" => load(app, current as i32),
         "spage.skills" => {
             let mut rows = Vec::new();
