@@ -136,6 +136,9 @@ pub(super) struct Session<'a, F: Fn(Event)> {
     pub(super) title: Option<TitleJob>,
     /// The refusals of the automatic approval review (notification params), newest last.
     pub(super) denials: Vec<Value>,
+    /// The turn that was running when a message was sent (a turn/start answered with that very turn
+    /// was added to it).
+    pub(super) turn_at_send: Option<String>,
 }
 
 /// A title being made by a short-lived thread of a light model (Codex Desktop: generateTitle).
@@ -177,6 +180,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
             titled: Default::default(),
             title: None,
             denials: Vec::new(),
+            turn_at_send: None,
         }
     }
 
@@ -283,6 +287,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                 };
                 let mut params = json!({ "threadId": tid, "input": [{ "type": "text", "text": text, "text_elements": [] }] });
                 self.turn_params(&mut params);
+                self.turn_at_send = self.turn_id.clone();
                 self.request("turn/start", params, Pending::TurnStart)?;
                 self.make_title(&tid, &text)?;
             }
@@ -295,6 +300,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                 input.extend(extra);
                 let mut params = json!({ "threadId": tid, "input": input });
                 self.turn_params(&mut params);
+                self.turn_at_send = self.turn_id.clone();
                 self.request("turn/start", params, Pending::TurnStart)?;
                 self.make_title(&tid, &text)?;
             }
@@ -657,6 +663,11 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                 // The turn is known from the answer, not only from the notification (a message
                 // sent in between would not find it).
                 if let Some(turn) = result.pointer("/turn/id").and_then(Value::as_str) {
+                    // The answer names the turn that was already running: the message was added to it
+                    // (steer), and the mode of that turn stays.
+                    if self.turn_at_send.take().as_deref() == Some(turn) {
+                        (self.on_event)(Event::Note { id: format!("steered:{turn}"), text: "前のターンが実行中のため、そのターンに追加されました".into(), detail: String::new() });
+                    }
                     if self.turn_id.is_none() {
                         self.turn_id = Some(turn.to_string());
                     }

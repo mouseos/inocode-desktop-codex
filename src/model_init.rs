@@ -17,7 +17,6 @@ pub(crate) fn register(handle: &Rc<client::Handle>) {
 
 /// The model list arrived: choose, and read the config.toml's model for what is still open.
 pub(crate) fn on_models(app: &AppWindow) {
-    STATE.with(|s| update_title_models(&mut s.borrow_mut()));
     apply(app);
     refresh_providers();
     crate::models_enrich::request();
@@ -72,7 +71,6 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
         STATE.with(|s| {
             let mut st = s.borrow_mut();
             st.provider_models.insert(p.to_string(), list);
-            update_title_models(&mut st);
             refresh_pickers(app, &st);
         });
         apply(app);
@@ -88,27 +86,6 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
     let provider = cfg.get("model_provider").and_then(Value::as_str).filter(|p| !p.is_empty()).map(str::to_string);
     STATE.with(|s| s.borrow_mut().config_model = id.map(|m| (m.to_string(), provider)));
     apply(app);
-}
-
-/// The light model of each provider that makes the title of a thread (Codex Desktop: its
-/// "ephemeral generation model", gpt-6-luna): luna for OpenAI, a Haiku for Claude. A provider
-/// without one gets no made title.
-fn update_title_models(st: &mut State) {
-    let mut out: Vec<(String, String)> = Vec::new();
-    {
-        let all = visible_models(st);
-        for (provider, key) in [("openai", "luna"), ("anthropic", "haiku")] {
-            let mut c: Vec<&ModelInfo> = all.iter().copied().filter(|m| m.provider == provider && m.id.to_lowercase().contains(key)).collect();
-            c.sort_by(|a, b| b.id.cmp(&a.id));
-            if let Some(m) = c.first() {
-                out.push((provider.to_string(), m.id.clone()));
-            }
-        }
-    }
-    if out != st.settings.title_models {
-        st.settings.title_models = out;
-        push(st);
-    }
 }
 
 /// Tell the client what is chosen now.

@@ -75,8 +75,9 @@ impl<F: Fn(Event)> Session<'_, F> {
             return Ok(());
         }
         self.untitled = None;
+        // The model the user chose for this thread: nothing is decided for them.
+        let Some(model) = self.settings.model.clone().filter(|m| !m.is_empty()) else { return Ok(()) };
         let provider = self.settings.model_provider.clone().unwrap_or_else(|| "openai".to_string());
-        let Some((_, model)) = self.settings.title_models.iter().find(|(p, _)| *p == provider).cloned() else { return Ok(()) };
         let clipped: String = text.trim().chars().take(2000).collect();
         if clipped.is_empty() {
             return Ok(());
@@ -148,10 +149,12 @@ impl<F: Fn(Event)> Session<'_, F> {
         match method {
             "turn/started" => {
                 // The turn of another thread (a sub-agent) is not the one a message is sent into.
+                // Only a turn of this thread starts "a turn running": the thread that makes a title
+                // (or a sub-agent) runs its own.
                 if self.is_active_thread(params) {
                     self.turn_id = params.pointer("/turn/id").and_then(Value::as_str).map(str::to_string);
+                    (self.on_event)(Event::TurnStarted);
                 }
-                (self.on_event)(Event::TurnStarted);
             }
             "item/started" => {
                 let item = params.get("item").unwrap_or(&Value::Null);
@@ -266,13 +269,16 @@ impl<F: Fn(Event)> Session<'_, F> {
                 }
             }
             "turn/completed" => {
-                self.flush();
-                let interrupted = params.pointer("/turn/status").and_then(Value::as_str) == Some("interrupted");
+                // The end of another thread's turn (the one that makes a title ends in seconds) is not
+                // the end of this one: a message sent then would be added to the running turn (steer),
+                // and keep its mode.
                 if self.is_active_thread(params) {
+                    self.flush();
+                    let interrupted = params.pointer("/turn/status").and_then(Value::as_str) == Some("interrupted");
                     self.turn_id = None;
+                    (self.on_event)(Event::TurnDone { interrupted });
+                    (self.on_event)(Event::Status("接続済み".into(), Level::Ok));
                 }
-                (self.on_event)(Event::TurnDone { interrupted });
-                (self.on_event)(Event::Status("接続済み".into(), Level::Ok));
                 let _ = self.list_threads();
             }
             "thread/tokenUsage/updated" => {
@@ -310,6 +316,7 @@ impl<F: Fn(Event)> Session<'_, F> {
                     }
                 }
             }
+            "error" if !self.is_active_thread(params) => {}
             "error" => {
                 let message = params.pointer("/error/message").and_then(Value::as_str).unwrap_or("error");
                 let will_retry = params.get("willRetry").and_then(Value::as_bool).unwrap_or(false);
