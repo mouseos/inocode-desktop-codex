@@ -282,6 +282,7 @@ fn on_text(app: &AppWindow, text: &str) {
     if text.starts_with('/') && !text.contains(' ') {
         let rows: Vec<SuggestRow> = SLASH
             .iter()
+            .chain(crate::chat_cmds::MORE.iter())
             .filter(|(c, _)| c.starts_with(text))
             .map(|(c, d)| SuggestRow { id: format!("slash:{c}").into(), label: (*c).into(), sub: (*d).into() })
             .collect();
@@ -493,7 +494,7 @@ fn run_slash(app: &AppWindow, h: &client::Handle, cmd: &str, arg: &str) -> bool 
         }
         ("/archive", Some(t)) => rpc(format!("chat.archive|{t}"), "thread/archive", json!({ "threadId": t })),
         ("/new", _) => h.send(Command::NewThread),
-        _ => return false,
+        _ => return crate::chat_cmds::run(app, h, cmd, arg),
     }
     let _ = app;
     true
@@ -505,7 +506,7 @@ pub(crate) fn try_slash(app: &AppWindow, h: &client::Handle, text: &str) -> bool
         return false;
     }
     let (cmd, arg) = text.split_once(' ').unwrap_or((text, ""));
-    if !SLASH.iter().any(|(c, _)| *c == cmd) {
+    if !SLASH.iter().chain(crate::chat_cmds::MORE.iter()).any(|(c, _)| *c == cmd) {
         return false;
     }
     run_slash(app, h, cmd, arg.trim())

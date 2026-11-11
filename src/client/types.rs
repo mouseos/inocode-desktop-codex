@@ -199,6 +199,8 @@ pub struct Settings {
     pub summary: Option<String>,
     /// (provider, model id) of a light model per provider: what makes the title of a thread.
     pub title_models: Vec<(String, String)>,
+    /// Plan mode (collaborationMode "plan" is sent with each turn).
+    pub plan_mode: bool,
 }
 
 impl Settings {
@@ -242,6 +244,7 @@ impl Default for Settings {
             allowed_sandboxes: None,
             summary: None,
             title_models: Vec::new(),
+            plan_mode: false,
         }
     }
 }

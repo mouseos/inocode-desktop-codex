@@ -1,6 +1,7 @@
 #![windows_subsystem = "windows"]
 
 mod chat_actions;
+mod chat_cmds;
 mod chat_md;
 mod coding;
 mod client;

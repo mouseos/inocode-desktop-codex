@@ -455,6 +455,13 @@ pub(super) fn turn_overrides(s: &Settings, with_permissions: bool, params: &mut 
     if let Some(e) = &s.effort {
         params["effort"] = json!(e);
     }
+    // Plan mode: the model plans and asks instead of working; "default" leaves it again.
+    if let Some(m) = &s.model {
+        params["collaborationMode"] = json!({
+            "mode": if s.plan_mode { "plan" } else { "default" },
+            "settings": { "model": m, "reasoning_effort": s.effort, "developer_instructions": null }
+        });
+    }
     // Without this the model's default decides, and that is "none" for the models of the catalog:
     // no summary of the thinking is asked for, so there is nothing to show.
     params["summary"] = json!(s.summary.as_deref().filter(|v| !v.is_empty()).unwrap_or("auto"));

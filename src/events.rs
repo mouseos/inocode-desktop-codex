@@ -269,6 +269,7 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
             crate::chat_actions::on_rpc(app, &tag, &result);
             crate::coding::on_rpc(app, &tag, &result);
             crate::reply::on_rpc(app, &tag, &result);
+            crate::chat_cmds::on_rpc(app, &tag, &result);
         }
         Event::Notify { method, params } => {
             crate::panel_data::on_notify(app, &method, &params);
