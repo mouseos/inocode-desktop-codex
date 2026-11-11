@@ -107,7 +107,7 @@ fn active_cwd() -> String {
 }
 
 /// A file to send along: an image goes as a picture, anything else as a mention.
-fn attach_file(app: &AppWindow, f: &std::path::Path) {
+pub(crate) fn attach_file(app: &AppWindow, f: &std::path::Path) {
     let path = f.to_string_lossy().to_string();
     let name = f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| path.clone());
     let ext = f.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();

@@ -14,6 +14,30 @@ fn env_num(name: &str, default: u64) -> u64 {
     std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
 }
 
+/// One step of INOCODE_GUI_PROMPT: "@decide:<answer>" answers the first approval card, "@run-plan"
+/// is what the button under a plan does, "@attach:<file>" attaches a file for the next message,
+/// anything else is sent the way a typed message is.
+fn run_step(app: &AppWindow, step: String) {
+    if let Some(d) = step.strip_prefix("@decide:") {
+        let first = app.global::<AppState>().get_approvals().row_data(0);
+        if let Ok(path) = std::env::var("INOCODE_GUI_STEP_LOG") {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                let _ = writeln!(f, "decide {d}: {}", first.as_ref().map(|a| a.key.to_string()).unwrap_or_else(|| "(no approval)".into()));
+            }
+        }
+        if let Some(a) = first {
+            app.global::<AppState>().invoke_decide(a.key, d.into());
+        }
+    } else if step == "@run-plan" {
+        crate::reply::act(app, "run-plan", 0);
+    } else if let Some(f) = step.strip_prefix("@attach:") {
+        crate::attach::attach_file(app, std::path::Path::new(f));
+    } else {
+        app.invoke_submit(step.into());
+    }
+}
+
 pub(crate) fn install(app: &AppWindow) {
     let Ok(path) = std::env::var("INOCODE_GUI_SNAPSHOT") else { return };
     // INOCODE_GUI_SIZE=<width>x<height> (logical pixels): a window as tall as the screen to look at.
@@ -367,15 +391,7 @@ pub(crate) fn install(app: &AppWindow) {
                 let ready_for_next = if decide { app.global::<AppState>().get_approvals().row_count() > 0 } else { !app.global::<AppState>().get_busy() };
                 if since_send >= 6 && !steps.is_empty() && ready_for_next && !app.global::<PromptState>().get_question_open() {
                     if let Some(next) = steps.pop_front() {
-                        if let Some(d) = next.strip_prefix("@decide:") {
-                            if let Some(a) = app.global::<AppState>().get_approvals().row_data(0) {
-                                app.global::<AppState>().invoke_decide(a.key, d.into());
-                            }
-                        } else if next == "@run-plan" {
-                            crate::reply::act(&app, "run-plan", 0);
-                        } else {
-                            app.invoke_submit(next.into());
-                        }
+                        run_step(&app, next);
                         since_send = 0;
                     }
                 }
@@ -410,7 +426,7 @@ pub(crate) fn install(app: &AppWindow) {
             if (chosen && waited >= 4) || waited > 40 {
                 if chosen {
                     if let Some(first) = steps.pop_front() {
-                        app.invoke_submit(first.into());
+                        run_step(&app, first);
                     }
                 }
                 stage = 2;

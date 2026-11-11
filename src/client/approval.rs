@@ -90,6 +90,9 @@ pub fn approval_info(method: &str, params: &Value, changes: Option<&Value>) -> O
         "item/commandExecution/requestApproval" => {
             info.title = "コマンドの実行を許可しますか？".into();
             if let Some(c) = text(params, "command") {
+                // What is to run: the command inside a shell's launch line, with the escaping of
+                // backslashes taken back (the same as the command row shows).
+                let c = super::shell_inner(c);
                 info.lines = c.lines().map(|l| (l.to_string(), PLAIN)).collect();
                 info.long = info.lines.len() > 6 || c.chars().count() > 240;
             }

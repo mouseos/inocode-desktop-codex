@@ -400,6 +400,12 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                 }
             }
             Command::Approve { key, decision } => {
+                if let Ok(path) = std::env::var("INOCODE_GUI_RPC_LOG") {
+                    use std::io::Write;
+                    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                        let _ = writeln!(f, "approve key={key} decision={decision:?} known={} pending={:?}", self.approvals.contains_key(&key), self.approvals.keys().collect::<Vec<_>>());
+                    }
+                }
                 if let Some((id, method, params)) = self.approvals.remove(&key) {
                     let result = approval_result(&method, &params, decision);
                     self.conn.send(json!({ "id": id, "result": result }))?;
