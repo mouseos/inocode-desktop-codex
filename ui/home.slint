@@ -394,6 +394,8 @@ component ChatView inherits Rectangle {
 
     flick := Flickable {
         content-height: content.preferred-height;
+        // The room above the composer got smaller (a question, an approval): keep the end in sight.
+        changed height => { root.scroll-bottom(); }
         content := VerticalLayout {
             width: parent.width;
             padding: 16px;
@@ -480,11 +482,11 @@ component ChatView inherits Rectangle {
                             }
                         }
                     }
+                    if m.role == "tool": ToolRow { text: m.text; detail: m.detail; diff: m.diff; running: m.running; blocks: m.blocks; index: mi; }
                     if m.role == "tool" && m.blocks.length > 0 && AppState.plan-mode: HorizontalLayout {
                         alignment: start;
                         ApprovalButton { label: "この計画で実行"; primary: true; clicked => { MessageActions.act("run-plan", mi); } }
                     }
-                    if m.role == "tool": ToolRow { text: m.text; detail: m.detail; diff: m.diff; running: m.running; blocks: m.blocks; index: mi; }
                     if m.role != "tool": ActionRow {
                         user: m.role == "user";
                         index: mi;

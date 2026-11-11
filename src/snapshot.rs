@@ -361,7 +361,7 @@ pub(crate) fn install(app: &AppWindow) {
                 // The next step, once the turn of the last one is over (not at once: the turn
                 // needs a moment to start).
                 since_send += 1;
-                if since_send >= 6 && !steps.is_empty() && !app.global::<AppState>().get_busy() {
+                if since_send >= 6 && !steps.is_empty() && !app.global::<AppState>().get_busy() && !app.global::<PromptState>().get_question_open() {
                     if let Some(next) = steps.pop_front() {
                         app.invoke_submit(next.into());
                         since_send = 0;
