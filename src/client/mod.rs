@@ -26,7 +26,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 pub use approval::{approval_info, elicitation_questions};
-pub use parse::{history_from_thread, parse_account, parse_models, parse_threads, rate_limit_text, tool_detail, tool_text, is_running, clean_title, guardian_event, shell_inner, unescape_command};
+pub use parse::{history_from_thread, parse_account, parse_models, parse_threads, rate_limit_text, tool_detail, tool_text, is_running, clean_title, guardian_event, approve_by_id_params, shell_inner, unescape_command};
 pub use transport::{base_client_version, find_inocode, probe_models};
 pub use types::*;
 
@@ -65,6 +65,16 @@ mod tests {
         assert_eq!(shell_inner(r#"bash -lc "ls -la""#), "ls -la");
         assert_eq!(shell_inner("cargo build"), "cargo build");
         assert_eq!(unescape_command(r"\\server\\share a\\b"), r"\\server\share a\b");
+    }
+
+    #[test]
+    fn a_refused_review_is_approved_by_its_id() {
+        // the notification as the server sends it when the automatic review refuses
+        let n = json!({ "threadId": "t1", "turnId": "u1", "reviewId": "rev-7", "startedAtMs": 1, "completedAtMs": 2,
+            "targetItemId": "c1", "decisionSource": "agent",
+            "review": { "status": "denied", "riskLevel": "high", "rationale": "writes outside the folder" },
+            "action": { "type": "command", "source": "shell", "command": "del x", "cwd": "C:\\w" } });
+        assert_eq!(approve_by_id_params("t1", &n), json!({ "threadId": "t1", "reviewId": "rev-7" }));
     }
 
     #[test]

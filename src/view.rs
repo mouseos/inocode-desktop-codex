@@ -349,6 +349,10 @@ pub(crate) fn upsert_tool(model: &VecModel<Message>, id: &str, text: &str, detai
                 if let Some(d) = detail {
                     row.detail = clip_detail(d).into();
                     row.diff = diff_model(d);
+                    // The text of a plan is Markdown.
+                    if text == "プラン" {
+                        row.blocks = crate::chat_md::blocks_of(d);
+                    }
                 }
                 model.set_row_data(i, row);
                 return;
@@ -362,6 +366,7 @@ pub(crate) fn upsert_tool(model: &VecModel<Message>, id: &str, text: &str, detai
         running: client::is_running(text),
         detail: detail.map(clip_detail).unwrap_or_default().into(),
         diff: detail.map(diff_model).unwrap_or_default(),
+        blocks: if text == "プラン" { detail.map(crate::chat_md::blocks_of).unwrap_or_default() } else { Default::default() },
         ..Default::default()
     });
 }

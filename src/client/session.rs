@@ -191,6 +191,13 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
         let id = self.next_id;
         self.next_id += 1;
         self.pending.insert(id, kind);
+        // INOCODE_GUI_RPC_LOG=<file>: what is asked of the server, to read what a run sent.
+        if let Ok(path) = std::env::var("INOCODE_GUI_RPC_LOG") {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                let _ = writeln!(f, "{method} {}", params.to_string().chars().take(1500).collect::<String>());
+            }
+        }
         // Like the desktop client, leave "params" out when there are none.
         if params.is_null() {
             self.conn.send(json!({ "id": id, "method": method }))
@@ -371,7 +378,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                         self.rpc_tags.insert(id, tag);
                         // By the review's id: the server kept the refused event (a server without this call answers
         // "method not found" and the error is shown).
-                        self.request("thread/approveGuardianDeniedActionById", json!({ "threadId": tid, "reviewId": p.get("reviewId") }), Pending::Other)?;
+                        self.request("thread/approveGuardianDeniedActionById", approve_by_id_params(&tid, &p), Pending::Other)?;
                     }
                     _ => (self.on_event)(Event::Rpc { tag, result: Err("承認できる拒否はありません".into()) }),
                 }

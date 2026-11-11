@@ -141,6 +141,12 @@ pub fn tool_text(item: &Value) -> Option<String> {
     }
 }
 
+/// The params of thread/approveGuardianDeniedActionById for a refused review (the params of its
+/// item/autoApprovalReview/completed notification).
+pub fn approve_by_id_params(thread: &str, denied: &Value) -> Value {
+    json!({ "threadId": thread, "reviewId": denied.get("reviewId") })
+}
+
 fn snake(s: &str) -> String {
     let mut out = String::new();
     for c in s.chars() {

@@ -382,6 +382,11 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
 pub(crate) fn act(app: &AppWindow, kind: &str, index: usize) -> bool {
     match kind {
         "reply" => reply_to(app, index, None),
+        // Under a plan: leave plan mode and go on with it.
+        "run-plan" => {
+            app.invoke_submit("/plan off".into());
+            app.invoke_submit("計画を実行してください。実行を始めてよいです(前のターンの「まだ実行しない」は解除します)。".into());
+        }
         "copy-id" => {
             let model = app.global::<AppState>().get_messages();
             if let Some(m) = model.row_data(index) {

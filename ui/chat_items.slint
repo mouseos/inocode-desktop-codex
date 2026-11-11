@@ -4,6 +4,7 @@ import { IconButton, Pulse } from "widgets.slint";
 export { Pulse }
 import { MessageActions } from "chat_actions.slint";
 import { DiffRow, AppState } from "state.slint";
+import { MdRow, MarkdownView } from "markdown.slint";
 
 // The rows of a diff (heading per file, numbered lines, added and removed lines tinted): the chat
 // shows the changes of a turn with it, the goal card shows the change of a goal text.
@@ -48,6 +49,8 @@ export component ToolRow inherits VerticalLayout {
     in property <[DiffRow]> diff;
     in property <int> index;
     in property <bool> running: false;
+    // The body as Markdown (a plan)
+    in property <[MdRow]> blocks;
     property <bool> open: AppState.tools-open;
     property <bool> expandable: root.detail != "" || root.diff.length > 0;
     spacing: 4px;
@@ -86,7 +89,18 @@ export component ToolRow inherits VerticalLayout {
         }
     }
     if root.open && root.diff.length > 0: DiffView { diff: root.diff; }
-    if root.open && root.expandable && root.diff.length == 0: Rectangle {
+    if root.open && root.blocks.length > 0 && root.diff.length == 0: Rectangle {
+        // A long word (a path in inline code) does not widen the chat: it is cut at the edge.
+        min-width: 0px;
+        clip: true;
+        border-radius: 8px;
+        background: Theme.bubble;
+        VerticalLayout {
+            padding: 10px;
+            MarkdownView { rows: root.blocks; }
+        }
+    }
+    if root.open && root.expandable && root.diff.length == 0 && root.blocks.length == 0: Rectangle {
         border-radius: 8px;
         background: Theme.bubble;
         VerticalLayout {
