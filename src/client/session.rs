@@ -369,7 +369,9 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                     (Some(tid), Some(p)) => {
                         let id = self.next_id;
                         self.rpc_tags.insert(id, tag);
-                        self.request("thread/approveGuardianDeniedAction", json!({ "threadId": tid, "event": guardian_event(&p) }), Pending::Other)?;
+                        // By the review's id: the server kept the refused event (a server without this call answers
+        // "method not found" and the error is shown).
+                        self.request("thread/approveGuardianDeniedActionById", json!({ "threadId": tid, "reviewId": p.get("reviewId") }), Pending::Other)?;
                     }
                     _ => (self.on_event)(Event::Rpc { tag, result: Err("承認できる拒否はありません".into()) }),
                 }
