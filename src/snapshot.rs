@@ -54,6 +54,37 @@ pub(crate) fn install(app: &AppWindow) {
         });
         extra.push(t);
     }
+    // INOCODE_GUI_THINK=1: thinking and search rows (running, done, with a body), through the
+    // same functions the server's items go through; INOCODE_GUI_THINK=busy also shows the turn running.
+    if let Ok(mode) = std::env::var("INOCODE_GUI_THINK") {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 1), move || {
+            let Some(app) = weak.upgrade() else { return };
+            app.global::<AppState>().set_tools_open(true);
+            let rows = [
+                serde_json::json!({"type":"reasoning","id":"r1","startedAtMs":0,"completedAtMs":4200,"summary":["ファイルの構成を確認してから、テストを直す方針にする。"],"content":[]}),
+                serde_json::json!({"type":"webSearch","id":"w1","query":"","action":null,"results":null}),
+                serde_json::json!({"type":"webSearch","id":"w2","query":"Tesla V100 CUDA 12","action":{"type":"search","query":"Tesla V100 CUDA 12"},"tool":"web_search","provider":"yahoo_jp","results":[{"engine":"bing","title":"NVIDIA Tesla V100 | NVIDIA","url":"https://www.nvidia.com/ja-jp/data-center/tesla-v100/","snippet":"Volta 世代の GPU"},{"engine":"bing","title":"CUDA Toolkit Archive","url":"https://developer.nvidia.com/cuda-toolkit-archive"}]}),
+                serde_json::json!({"type":"webSearch","id":"w3","query":"RTX 4090 価格","action":{"type":"search","query":"RTX 4090 価格"},"tool":"shopping_search","results":[]}),
+                serde_json::json!({"type":"reasoning","id":"r2"}),
+                serde_json::json!({"type":"dynamicToolCall","id":"e1","tool":"exec","status":"inProgress"}),
+            ];
+            crate::view::messages_with(&app, |m| {
+                crate::view::push(m, "", "user", "V100 でも CUDA 12 が動くか調べて");
+                for it in &rows {
+                    if let (Some(id), Some(text)) = (it.get("id").and_then(|v| v.as_str()), client::tool_text(it)) {
+                        let d = client::tool_detail(it);
+                        crate::view::upsert_tool(m, id, &text, if d.is_empty() { None } else { Some(&d) });
+                    }
+                }
+            });
+            if mode == "busy" {
+                app.global::<AppState>().set_busy(true);
+            }
+        });
+        extra.push(t);
+    }
     // INOCODE_GUI_DIFF=1: the edits of a turn as the chat shows them, open.
     if std::env::var("INOCODE_GUI_DIFF").is_ok() {
         let weak = app.as_weak();
