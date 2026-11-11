@@ -105,6 +105,22 @@ component AttachPill inherits Rectangle {
     }
 }
 
+// A file that was sent with a message: the pill of the composer, without its x.
+export component SentPill inherits Rectangle {
+    in property <string> label;
+    height: 24px;
+    width: lbl.preferred-width + 40px;
+    border-radius: 12px;
+    background: Theme.hover;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 4px;
+        Icon { width: 14px; text: Glyph.file; font-size: 13px; color: Theme.fg-secondary; }
+        lbl := Text { text: root.label; color: Theme.fg; font-size: 12px; vertical-alignment: center; overflow: elide; max-width: 220px; }
+    }
+}
+
 export component AttachChips inherits HorizontalLayout {
     spacing: 6px;
     alignment: start;

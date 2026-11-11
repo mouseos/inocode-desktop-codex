@@ -411,6 +411,11 @@ pub(crate) fn demo(app: &AppWindow, picture: &std::path::Path) {
     attach_file(app, std::path::Path::new("Cargo.toml"));
 }
 
+/// The names of the files (not pictures) that go with the next message, for the chat to show too.
+pub(crate) fn peek_files() -> Vec<String> {
+    DATA.with(|d| d.borrow().items.iter().filter(|a| a.thumb.is_none()).map(|a| a.label.clone()).collect())
+}
+
 /// The pictures that go with the next message (what the chips show), for the chat to show too.
 pub(crate) fn peek_images() -> Vec<slint::Image> {
     DATA.with(|d| d.borrow().items.iter().filter_map(|a| a.thumb.clone()).collect())

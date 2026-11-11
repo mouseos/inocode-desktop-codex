@@ -9,7 +9,7 @@ import { ShortcutState } from "shortcuts.slint";
 import { MetricsState } from "metrics.slint";
 import { SettingsPageState } from "settings_page.slint";
 import { AccountsState } from "accounts_page.slint";
-import { AttachState, AttachChips, SuggestList } from "attach.slint";
+import { AttachState, AttachChips, SuggestList, SentPill } from "attach.slint";
 import { PromptState, QuestionCard, QueueList, ErrorBanner } from "prompts.slint";
 import { MarkdownView } from "markdown.slint";
 import { ReplyState, ReplyChips, RefChip } from "reply.slint";
@@ -449,6 +449,11 @@ component ChatView inherits Rectangle {
                                         Image { width: parent.width; height: parent.height; source: im; image-fit: ImageFit.cover; }
                                         TouchArea { mouse-cursor: pointer; clicked => { AttachState.preview-image = im; AttachState.preview-open = true; } }
                                     }
+                                }
+                                if m.files.length > 0: HorizontalLayout {
+                                    spacing: 6px;
+                                    alignment: start;
+                                    for f in m.files: SentPill { label: f; }
                                 }
                                 if m.refs.length == 0 || m.shown != "": Text {
                                     text: m.refs.length > 0 ? m.shown : m.text;

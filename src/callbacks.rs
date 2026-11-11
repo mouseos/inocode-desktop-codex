@@ -43,8 +43,17 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         // A message queued behind a running turn shows in the chat when it starts.
         if !app.global::<AppState>().get_busy() {
             let images = crate::attach::peek_images();
+            let files = crate::attach::peek_files();
             messages_with(&app, |m| {
                 push(m, "", "user", &text);
+                // The files (references) too.
+                if !files.is_empty() {
+                    let n = m.row_count() - 1;
+                    if let Some(mut row) = m.row_data(n) {
+                        row.files = ModelRc::from(Rc::new(VecModel::from(files.into_iter().map(SharedString::from).collect::<Vec<_>>())));
+                        m.set_row_data(n, row);
+                    }
+                }
                 // The pictures sent with it are shown in the message too.
                 if !images.is_empty() {
                     let n = m.row_count() - 1;

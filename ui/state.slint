@@ -55,6 +55,8 @@ export struct Message {
     shown: string,
     // The pictures sent with a user message
     images: [image],
+    // The names of the files sent with a user message (references)
+    files: [string],
     // The body of a tool row that is a diff, row by row
     diff: [DiffRow],
     // A tool row of something that is still going on (it moves)

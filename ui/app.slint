@@ -145,10 +145,13 @@ export component AppWindow inherits Window {
                     }
                     Rectangle { horizontal-stretch: 1; }
                     Rectangle {
-                        width: min(st.preferred-width + 12px, 150px);
+                        width: min(st.preferred-width + 12px, 220px);
+                        clip: true;
                         border-radius: Theme.radius-row;
                         background: sta.has-hover ? Theme.hover : transparent;
                         st := Text {
+                            // The text is cut at the box (a long error does not run over the tabs)
+                            width: parent.width;
                             text: AppState.status + " · " + AppState.transport;
                             color: AppState.status-level == 3 ? Theme.danger
                                 : AppState.status-level == 2 ? Theme.warning
