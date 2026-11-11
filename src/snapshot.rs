@@ -307,6 +307,7 @@ pub(crate) fn install(app: &AppWindow) {
         t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 2), move || {
             if let Some(app) = weak.upgrade() {
                 app.global::<EvidenceState>().set_tab(n);
+                app.global::<EvidenceState>().invoke_tab_changed(n);
             }
         });
         extra.push(t);
