@@ -2,6 +2,7 @@
 
 mod chat_actions;
 mod chat_cmds;
+mod os_notify;
 mod chat_md;
 mod coding;
 mod client;
@@ -31,8 +32,8 @@ mod settings_mcp;
 mod settings_plugins;
 mod state;
 mod thread_stats;
-mod tabs;
 mod side_panel;
+mod tabs;
 mod view;
 
 use state::*;
@@ -101,4 +102,3 @@ fn main() {
     // Closing the window: stop the client so the app-server child it started exits too.
     handle.shutdown();
 }
-mod os_notify;
