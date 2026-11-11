@@ -15,7 +15,8 @@
     "primaryPercent": 1.4,
     "secondaryPercent": 0.3,
     "seconds": 45.0,
-    "insufficient": false
+    "insufficient": false,
+    "upperBound": true
   },
   "_doc": "inocode/stats/estimate (all numbers null when insufficient)"
 }

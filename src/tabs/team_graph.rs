@@ -1,7 +1,7 @@
 //! チームタブの関係図: 点 = エージェント(と、つながりのあるメイン)、線 = 実際に取れた関係だけ。
-//! 線になるのは (1) 親が子を起こした関係(エージェントの parentId / parentThreadId / parent、
-//! 無ければ path の親)と (2) メッセージ板の送信元と宛先。どちらの端も点に結べないものは、
-//! 推測で補わず、引かない。
+//! 線になるのは (1) 親が子を起こした関係(agents[].parentId)と (2) スレッドどうしのメッセージ
+//! (team/status の messages[]: fromId、toId)。端の ID が分からない(null)ものや、点に結べない
+//! ものは、推測で補わず、引かない。
 
 use crate::{AppWindow, GraphEdge, GraphNode, TeamState};
 use serde_json::Value;
@@ -42,79 +42,17 @@ fn s<'a>(v: &'a Value, k: &str) -> &'a str {
     v.get(k).and_then(Value::as_str).unwrap_or("")
 }
 
-fn last_segment(p: &str) -> &str {
-    p.trim_end_matches('/').rsplit('/').next().unwrap_or("")
-}
-
-fn is_main(p: &str) -> bool {
-    let t = p.trim_end_matches('/');
-    t == "/root" || t == "root"
-}
-
-fn parent_path(p: &str) -> Option<String> {
-    let t = p.trim_end_matches('/');
-    let i = t.rfind('/')?;
-    if i == 0 {
-        None
-    } else {
-        Some(t[..i].to_string())
-    }
-}
-
 const MAIN: usize = usize::MAX;
 
-struct Agent<'a> {
-    v: &'a Value,
-}
-
-impl Agent<'_> {
-    fn path(&self) -> &str {
-        let p = s(self.v, "path");
-        if p.is_empty() { s(self.v, "agentPath") } else { p }
-    }
-}
-
-/// A name from the server (a path, an id or a thread id) -> an agent, or the main thread.
-fn resolve(agents: &[Agent], name: &str) -> Option<usize> {
-    if name.is_empty() {
+/// A thread id from the server -> an agent, or the main thread; None when it is none of them.
+fn resolve(agents: &[Value], main_id: &str, id: &str) -> Option<usize> {
+    if id.is_empty() {
         return None;
     }
-    if is_main(name) {
+    if id == main_id {
         return Some(MAIN);
     }
-    // the exact names first
-    for (i, a) in agents.iter().enumerate() {
-        if a.path() == name || s(a.v, "id") == name || s(a.v, "threadId") == name {
-            return Some(i);
-        }
-    }
-    // then the last part of a path against the name the agent was given
-    if name.contains('/') {
-        let seg = last_segment(name);
-        if !seg.is_empty() {
-            for (i, a) in agents.iter().enumerate() {
-                if s(a.v, "name") == seg || s(a.v, "nickname") == seg || s(a.v, "id") == seg {
-                    return Some(i);
-                }
-            }
-        }
-    }
-    None
-}
-
-fn parent_of(agents: &[Agent], i: usize) -> Option<usize> {
-    let a = &agents[i];
-    for k in ["parentId", "parentThreadId", "parent"] {
-        let v = s(a.v, k);
-        if !v.is_empty() {
-            return resolve(agents, v).filter(|&p| p != i);
-        }
-    }
-    let path = a.path();
-    if path.is_empty() {
-        return None;
-    }
-    parent_path(path).and_then(|pp| resolve(agents, &pp)).filter(|&p| p != i)
+    agents.iter().position(|a| s(a, "id") == id)
 }
 
 pub fn now_ms() -> i64 {
@@ -131,25 +69,28 @@ fn state_label(state: &str) -> &str {
     }
 }
 
-pub fn build(agent_values: &[Value], messages: &[Value], now: i64) -> Graph {
-    let agents: Vec<Agent> = agent_values.iter().map(|v| Agent { v }).collect();
+/// The graph of the tree: a line from the thread that started an agent (parentId) and a line for
+/// each pair of threads that wrote to each other (messages[]: fromId, toId, lastTsMs). A id the
+/// server did not know is null: that end has no point and the line is not drawn.
+pub fn build(agent_values: &[Value], messages: &[Value], main_id: &str, now: i64) -> Graph {
+    let agents = agent_values;
     let n = agents.len();
 
-    // relations as pairs of (from, to) with MAIN for the main thread; the flag says "a parent edge"
-    let mut parent: Vec<Option<usize>> = (0..n).map(|i| parent_of(&agents, i)).collect();
-    let mut pairs: Vec<(usize, usize, bool, i64)> = Vec::new();
+    // relations as pairs of (from, to) with MAIN for the main thread
+    let parent: Vec<Option<usize>> =
+        (0..n).map(|i| resolve(agents, main_id, s(&agents[i], "parentId")).filter(|&p| p != i)).collect();
+    let mut pairs: Vec<(usize, usize, i64)> = Vec::new();
     for (i, p) in parent.iter().enumerate() {
         if let Some(p) = p {
-            pairs.push((*p, i, true, 0));
+            pairs.push((*p, i, 0));
         }
     }
     for m in messages {
-        let (Some(a), Some(b)) = (resolve(&agents, s(m, "from")), resolve(&agents, s(m, "to"))) else { continue };
+        let (Some(a), Some(b)) = (resolve(agents, main_id, s(m, "fromId")), resolve(agents, main_id, s(m, "toId"))) else { continue };
         if a == b {
             continue;
         }
-        let ts = m.get("tsMs").and_then(Value::as_i64).unwrap_or(0);
-        pairs.push((a, b, false, ts));
+        pairs.push((a, b, m.get("lastTsMs").and_then(Value::as_i64).unwrap_or(0)));
     }
     if pairs.is_empty() {
         return Graph::default();
@@ -165,6 +106,7 @@ pub fn build(agent_values: &[Value], messages: &[Value], now: i64) -> Graph {
         used[fix(p.0)] = true;
         used[fix(p.1)] = true;
     }
+    let mut parent = parent;
     parent.push(None);
     let total = n + 1;
 
@@ -218,12 +160,11 @@ pub fn build(agent_values: &[Value], messages: &[Value], now: i64) -> Graph {
             nodes.push(Node { label: "メイン".into(), detail: "メイン".into(), state: String::new(), main: true, x: x[i], y, dy: dy[i], span: span[i] });
         } else {
             let a = &agents[i];
-            let name = if s(a.v, "nickname").is_empty() { s(a.v, "name") } else { s(a.v, "nickname") };
-            let state = s(a.v, "state");
-            let title = super::team::agent_title(a.v);
-            let tokens = a.v.get("tokens").and_then(Value::as_i64).map(|t| format!("  {t} トークン")).unwrap_or_default();
+            let state = s(a, "state");
+            let title = super::team::agent_title(a);
+            let tokens = a.get("tokens").and_then(Value::as_i64).map(|t| format!("  {t} トークン")).unwrap_or_default();
             nodes.push(Node {
-                label: name.to_string(),
+                label: super::team::agent_label(a),
                 detail: format!("{}  {}{}", title, state_label(state), tokens),
                 state: state.to_string(),
                 main: false,
@@ -237,7 +178,7 @@ pub fn build(agent_values: &[Value], messages: &[Value], now: i64) -> Graph {
 
     // one line for a pair of points; it moves when a message passed on it lately
     let mut edges: Vec<(usize, usize, i64)> = Vec::new(); // (from, to, last message ts)
-    for (a, b, _is_parent, ts) in &pairs {
+    for (a, b, ts) in &pairs {
         let (a, b) = (new_of[fix(*a)], new_of[fix(*b)]);
         match edges.iter_mut().find(|e| (e.0 == a && e.1 == b) || (e.0 == b && e.1 == a)) {
             Some(e) => {
@@ -263,9 +204,8 @@ pub fn build(agent_values: &[Value], messages: &[Value], now: i64) -> Graph {
 
 /// Shows the graph when there are lines to draw; with none the tab shows no graph.
 pub fn render(app: &AppWindow) {
-    let agents = super::team::agents_snapshot();
-    let messages = super::team_log::messages_snapshot();
-    let g = build(&agents, &messages, now_ms());
+    let (agents, messages, main_id) = super::team::graph_input();
+    let g = build(&agents, &messages, &main_id, now_ms());
     let ts = app.global::<TeamState>();
     if g.nodes.len() < 2 || g.edges.is_empty() {
         ts.set_graph_nodes(ModelRc::from(Rc::new(VecModel::from(Vec::<GraphNode>::new()))));

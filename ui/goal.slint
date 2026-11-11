@@ -120,7 +120,7 @@ export component GoalEvidenceCard inherits Rectangle {
                     Flickable {
                         height: min(claims.preferred-height, 240px);
                         content-height: claims.preferred-height;
-                        viewport-width: self.width;
+                        content-width: self.width;
                         claims := Lines { lines: GoalState.claims; text-width: (root.width - 84px) / 2; }
                     }
                 }
@@ -130,7 +130,7 @@ export component GoalEvidenceCard inherits Rectangle {
                     Flickable {
                         height: min(facts.preferred-height, 240px);
                         content-height: facts.preferred-height;
-                        viewport-width: self.width;
+                        content-width: self.width;
                         facts := Lines { lines: GoalState.facts; text-width: (root.width - 84px) / 2; }
                     }
                 }

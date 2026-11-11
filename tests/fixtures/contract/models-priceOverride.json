@@ -1,0 +1,15 @@
+{
+  "_comment": "inocode/models/priceOverride. price absent/null clears the user's price. Amounts are USD per 1M tokens (0 or more).",
+  "request": {
+    "method": "inocode/models/priceOverride",
+    "params": {
+      "provider": "openai",
+      "modelId": "gpt-6-astra",
+      "price": {
+        "input": 7.0,
+        "output": 33.0
+      }
+    }
+  },
+  "response": {}
+}

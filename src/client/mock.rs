@@ -22,7 +22,17 @@ pub fn mock_rpc(on_event: &impl Fn(Event), tag: &str, method: &str, params: &Val
     // A request for another provider uses the fixture with that provider as a suffix when there is one
     // (accounts-login-start-claude.json).
     let variant = params.get("provider").and_then(Value::as_str).filter(|p| *p != "openai");
-    let result = variant.and_then(|v| fixture_named(method, Some(v))).unwrap_or_else(|| fixture(method));
+    let mut result = variant.and_then(|v| fixture_named(method, Some(v))).unwrap_or_else(|| fixture(method));
+    // The fixtures name the thread "thr_01HZX"; an answer is about the thread that was asked for.
+    if let (Some(tid), Ok(v)) = (params.get("threadId").and_then(Value::as_str), result.as_mut()) {
+        if let Ok(text) = serde_json::to_string(&*v) {
+            if text.contains("thr_01HZX") {
+                if let Ok(replaced) = serde_json::from_str::<Value>(&text.replace("thr_01HZX", tid)) {
+                    *v = replaced;
+                }
+            }
+        }
+    }
     on_event(Event::Rpc { tag: tag.to_string(), result });
     true
 }

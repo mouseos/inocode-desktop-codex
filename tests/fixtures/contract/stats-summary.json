@@ -57,7 +57,12 @@
         "avgTokensPerSecond": 38.0,
         "insufficient": true
       }
-    ]
+    ],
+    "quotaIsUpperBound": true,
+    "usedElsewhere": {
+      "primaryPercent": 1.5,
+      "secondaryPercent": 0.2
+    }
   },
   "_doc": "inocode/stats/summary (primary = 5-hour window, secondary = weekly)"
 }

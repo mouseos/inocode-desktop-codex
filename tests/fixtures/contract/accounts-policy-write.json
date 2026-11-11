@@ -8,7 +8,8 @@
       "apiKeyOrder": "afterChatgpt",
       "defaultCooldownSeconds": 60,
       "autoSwitch": true
-    }
+    },
+    "provider": "openai"
   },
   "response": {
     "policy": {
@@ -20,5 +21,5 @@
       "autoSwitch": true
     }
   },
-  "note": "書いた値をそのまま返す。thresholdPercent は 0-100。"
+  "note": "書いた値をそのまま返す。thresholdPercent は 0-100。 provider(openai か claude。省略は openai)ごとに別の設定。しきい値、API キーの順序、冷却、自動切り替えは、そのプロバイダのアカウントの間だけに効く。selection は互換のために残すが無視される。"
 }

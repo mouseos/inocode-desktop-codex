@@ -18,6 +18,8 @@ const TAG_HISTORY: &str = "team.history";
 struct Data {
     thread_id: String,
     agents: Vec<Value>,
+    /// who wrote to whom (thread ids) and how often, as the server counts them
+    messages: Vec<Value>,
     estimate: Option<Value>,
     /// thread id -> title, from Event::Threads (names for the per-thread table).
     titles: Vec<(String, String)>,
@@ -43,9 +45,18 @@ pub fn agent_title(a: &Value) -> String {
     parts.join(" · ")
 }
 
-/// The agents as the server sent them (for the graph).
-pub fn agents_snapshot() -> Vec<Value> {
-    DATA.with(|d| d.borrow().agents.clone())
+/// The name of an agent: the nickname, or the role name without one.
+pub fn agent_label(a: &Value) -> String {
+    let s = |k: &str| a.get(k).and_then(Value::as_str).unwrap_or("");
+    if s("nickname").is_empty() { s("name").to_string() } else { s("nickname").to_string() }
+}
+
+/// What the graph is drawn from: the agents, the message counts, and the id of this (main) thread.
+pub fn graph_input() -> (Vec<Value>, Vec<Value>, String) {
+    DATA.with(|d| {
+        let d = d.borrow();
+        (d.agents.clone(), d.messages.clone(), d.thread_id.clone())
+    })
 }
 
 pub fn install(app: &AppWindow, host: &Host) {
@@ -103,6 +114,7 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
                 if d.thread_id != *id {
                     d.thread_id = id.clone();
                     d.agents.clear();
+                    d.messages.clear();
                     d.estimate = None;
                 }
             });
@@ -125,6 +137,7 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
                 DATA.with(|d| {
                     let mut d = d.borrow_mut();
                     d.agents = v.get("agents").and_then(Value::as_array).cloned().unwrap_or_default();
+                    d.messages = v.get("messages").and_then(Value::as_array).cloned().unwrap_or_default();
                     d.estimate = v.get("estimate").cloned();
                 });
                 app.global::<TeamState>().set_error("".into());
@@ -143,6 +156,11 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
                 .map(|t| DATA.with(|d| d.borrow().thread_id == t))
                 .unwrap_or(true);
             if !for_this_thread {
+                // the roster of an agent that started others: the whole tree comes from status
+                let thread_id = DATA.with(|d| d.borrow().thread_id.clone());
+                if !thread_id.is_empty() {
+                    host.rpc(TAG_STATUS, "inocode/team/status", json!({ "threadId": thread_id }));
+                }
                 return;
             }
             DATA.with(|d| {
@@ -154,6 +172,15 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
                         match d.agents.iter_mut().find(|x| x.get("id").and_then(Value::as_str) == Some(id)) {
                             Some(slot) => *slot = a.clone(),
                             None => d.agents.push(a.clone()),
+                        }
+                    }
+                }
+                if let Some(changed) = params.get("messages").and_then(Value::as_array) {
+                    let key = |m: &Value| (m.get("fromId").cloned().unwrap_or(Value::Null), m.get("toId").cloned().unwrap_or(Value::Null));
+                    for m in changed {
+                        match d.messages.iter_mut().find(|x| key(x) == key(m)) {
+                            Some(slot) => *slot = m.clone(),
+                            None => d.messages.push(m.clone()),
                         }
                     }
                 }

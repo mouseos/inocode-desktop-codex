@@ -13,7 +13,11 @@
         ],
         "state": "running",
         "tokens": 18240,
-        "startedAt": "2026-11-11T01:10:00Z"
+        "startedAt": "2026-11-11T01:10:00Z",
+        "nickname": "Euclid",
+        "model": "gpt-5.6-luna",
+        "reasoningEffort": "medium",
+        "parentId": "thr_01HZX"
       },
       {
         "id": "agent-002",
@@ -23,7 +27,11 @@
         ],
         "state": "done",
         "tokens": 6120,
-        "startedAt": "2026-11-11T01:10:05Z"
+        "startedAt": "2026-11-11T01:10:05Z",
+        "nickname": "Hypatia",
+        "model": "gpt-5.6-luna",
+        "reasoningEffort": "low",
+        "parentId": "thr_01HZX"
       },
       {
         "id": "agent-003",
@@ -33,7 +41,11 @@
         ],
         "state": "blocked",
         "tokens": 2310,
-        "startedAt": "2026-11-11T01:20:00Z"
+        "startedAt": "2026-11-11T01:20:00Z",
+        "nickname": "Ptolemy",
+        "model": "gpt-5.6-luna",
+        "reasoningEffort": "high",
+        "parentId": "agent-001"
       }
     ],
     "estimate": {
@@ -57,7 +69,30 @@
           ]
         }
       ]
-    }
+    },
+    "messages": [
+      {
+        "fromId": "thr_01HZX",
+        "toId": "agent-001",
+        "count": 3,
+        "lastTsMs": 1794355800000,
+        "lastDelivery": "send_message"
+      },
+      {
+        "fromId": "agent-001",
+        "toId": "agent-003",
+        "count": 1,
+        "lastTsMs": 1794355900000,
+        "lastDelivery": "followup_task"
+      },
+      {
+        "fromId": "agent-003",
+        "toId": null,
+        "count": 1,
+        "lastTsMs": 1794356000000,
+        "lastDelivery": "send_message"
+      }
+    ]
   },
-  "note": "state: running / waiting / blocked / done。"
+  "note": "state: running / waiting / blocked / done。  parentId = そのエージェントを起動したスレッド ID(木の線)。messages = 送信元・宛先(スレッド ID)ごとの件数。ID を知らない端は null(推測しない)。nickname / model / reasoningEffort は、Thread の agentNickname / model / reasoningEffort と同じ値(欄は省略できる)。"
 }

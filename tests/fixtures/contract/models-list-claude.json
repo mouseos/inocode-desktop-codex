@@ -1,0 +1,56 @@
+{
+  "_comment": "model/list with modelProvider: each model says which provider it belongs to. Send that id as modelProvider with the model in thread/start (turn/start has no provider field: a thread keeps its provider, so switching provider starts or resumes a thread with the other modelProvider). model/list { modelProvider: 'claude' } lists the Claude catalog (read live from GET /v1/models with the pool's Claude credential, cached for an hour; a bundled snapshot when it cannot be read). Nothing is filtered out.",
+  "request": {
+    "method": "model/list",
+    "params": {
+      "modelProvider": "claude"
+    }
+  },
+  "response": {
+    "data": [
+      {
+        "id": "claude-opus-5-5",
+        "model": "claude-opus-5-5",
+        "modelProvider": "claude",
+        "upgrade": null,
+        "upgradeInfo": null,
+        "availabilityNux": null,
+        "displayName": "Claude Opus 5.5",
+        "description": "",
+        "hidden": false,
+        "supportedReasoningEfforts": [
+          {
+            "reasoningEffort": "low",
+            "description": "Fast, light reasoning"
+          },
+          {
+            "reasoningEffort": "medium",
+            "description": "Balanced reasoning"
+          },
+          {
+            "reasoningEffort": "high",
+            "description": "Deeper reasoning"
+          },
+          {
+            "reasoningEffort": "xhigh",
+            "description": "Extra-deep reasoning"
+          },
+          {
+            "reasoningEffort": "max",
+            "description": "Maximum reasoning"
+          }
+        ],
+        "defaultReasoningEffort": "medium",
+        "inputModalities": [
+          "text",
+          "image"
+        ],
+        "supportsPersonality": false,
+        "additionalSpeedTiers": [],
+        "serviceTiers": [],
+        "isDefault": true
+      }
+    ],
+    "nextCursor": null
+  }
+}

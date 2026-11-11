@@ -1,6 +1,8 @@
 {
   "method": "inocode/accounts/policy/read",
-  "request": {},
+  "request": {
+    "provider": "openai"
+  },
   "response": {
     "policy": {
       "thresholdPercent": 90.0,
@@ -11,5 +13,5 @@
       "autoSwitch": true
     }
   },
-  "note": "window: fiveHour / weekly / both。selection: quota / roundRobin / fillFirst。apiKeyOrder: afterChatgpt(ChatGPT が全部しきい値を超えたとき、または冷却中のときに使う) / beforeChatgpt / mixed。既定は例のとおり。"
+  "note": "window: fiveHour / weekly / both。selection: quota / roundRobin / fillFirst。apiKeyOrder: afterChatgpt(ChatGPT が全部しきい値を超えたとき、または冷却中のときに使う) / beforeChatgpt / mixed。既定は例のとおり。 provider(openai か claude。省略は openai)ごとに別の設定。しきい値、API キーの順序、冷却、自動切り替えは、そのプロバイダのアカウントの間だけに効く。selection は互換のために残すが無視される。"
 }

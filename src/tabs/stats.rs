@@ -221,6 +221,18 @@ fn seconds_label(secs: f64) -> String {
 }
 
 /// estimate の応答 -> 1 行の結果
+/// What rose in the windows without tokens of this device: "他の端末の使用 5時間枠 +1.5% · 週枠 +0.2%".
+/// Empty when it is nothing or the server does not say.
+fn elsewhere_label(summary: &Value) -> String {
+    let Some(e) = summary.get("usedElsewhere").filter(|e| e.is_object()) else { return String::new() };
+    let p = num(e, "primaryPercent").unwrap_or(0.0);
+    let w = num(e, "secondaryPercent").unwrap_or(0.0);
+    if p <= 0.0 && w <= 0.0 {
+        return String::new();
+    }
+    format!("他の端末の使用 5時間枠 +{} · 週枠 +{}", pct_label(p), pct_label(w))
+}
+
 fn estimate_label(v: &Value) -> String {
     if v.get("insufficient").and_then(Value::as_bool).unwrap_or(false) {
         return "データが足りない".into();
@@ -228,6 +240,10 @@ fn estimate_label(v: &Value) -> String {
     let p = num(v, "primaryPercent").map(pct_label).unwrap_or_else(|| "—".into());
     let w = num(v, "secondaryPercent").map(pct_label).unwrap_or_else(|| "—".into());
     let t = num(v, "seconds").map(seconds_label).unwrap_or_else(|| "—".into());
+    if v.get("upperBound").and_then(Value::as_bool).unwrap_or(false) {
+        // other devices may be in it: it is at most this
+        return format!("5時間枠 約 {p} まで、週枠 約 {w} まで、{t}");
+    }
     format!("5時間枠 約 {p}、週枠 約 {w}、{t}")
 }
 
@@ -278,12 +294,20 @@ fn render_charts(app: &AppWindow) {
 
 fn render_models(app: &AppWindow) {
     let st = app.global::<StatsState>();
-    let (rows, selected, names) = S.with(|s| {
+    let (rows, selected, names, upper, elsewhere) = S.with(|s| {
         let s = s.borrow();
         let names = model_names(&s.summary);
         let selected = effective_model(&s.selected_model, &names);
-        (model_rows(&s.summary, &selected), selected, names)
+        (
+            model_rows(&s.summary, &selected),
+            selected,
+            names,
+            s.summary.get("quotaIsUpperBound").and_then(Value::as_bool).unwrap_or(false),
+            elsewhere_label(&s.summary),
+        )
     });
+    st.set_upper_bound(upper);
+    st.set_elsewhere(elsewhere.into());
     st.set_empty(rows.is_empty());
     st.set_models(ModelRc::from(Rc::new(VecModel::from(rows))));
     st.set_selected_model(selected.into());

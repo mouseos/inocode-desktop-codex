@@ -1,0 +1,212 @@
+{
+  "_comment": "inocode/models/enrich. Params: {models:[{provider, modelId, authKind?}], uses?, refresh?}. Absent scores = unmeasured (not 0). price.reference is a list price from a public source (reference:true); price.measured is reserved for the usage statistics; price.userOverride is the user's own and is never overwritten by a fetch. kind unknown has no amounts. Show sources[].attribution where the data is shown.",
+  "request": {
+    "method": "inocode/models/enrich",
+    "params": {
+      "models": [
+        {
+          "provider": "openai",
+          "modelId": "gpt-6-astra",
+          "authKind": "chatgpt"
+        },
+        {
+          "provider": "claude",
+          "modelId": "claude-sonnet-5-5",
+          "authKind": "claudeOauth"
+        },
+        {
+          "provider": "openai",
+          "modelId": "gpt-9-unknown"
+        }
+      ],
+      "uses": [
+        "coding",
+        "speed"
+      ]
+    }
+  },
+  "response": {
+    "models": [
+      {
+        "provider": "openai",
+        "modelId": "gpt-6-astra",
+        "benchmarkMatch": {
+          "source": "llmbenchmark",
+          "sourceId": "openai/gpt-6-astra",
+          "matchedBy": "exact"
+        },
+        "scores": [
+          {
+            "use": "coding",
+            "metric": "livebench_coding",
+            "board": "livebench",
+            "value": 0.875,
+            "unit": "ratio",
+            "observedAt": "2026-11-11",
+            "sourceUrl": "https://livebench.ai/data/20261106/table.csv",
+            "nModelsInMetric": 30,
+            "rank": 4
+          },
+          {
+            "use": "speed",
+            "metric": "or_output_tokens_per_second",
+            "board": "openrouter-speed",
+            "value": 52.0,
+            "unit": "count",
+            "setting": "OpenAI",
+            "observedAt": "2026-11-11",
+            "nModelsInMetric": 179,
+            "rank": 60
+          }
+        ],
+        "price": {
+          "reference": {
+            "kind": "per_token_list",
+            "unit": "usd_per_1m_tokens",
+            "reference": true,
+            "input": 10.0,
+            "output": 50.0,
+            "cacheRead": 1.0,
+            "cacheWrite": 12.5,
+            "tiers": [
+              {
+                "abovePromptTokens": 272000,
+                "input": 20.0,
+                "output": 75.0,
+                "cacheRead": 2.0,
+                "cacheWrite": 25.0
+              }
+            ],
+            "source": {
+              "name": "models.dev",
+              "url": "https://models.dev/api.json",
+              "path": "openai.models.gpt-6-astra.cost"
+            },
+            "fetchedAt": 1794390000,
+            "sourceDataDate": "2026-10-01"
+          },
+          "userOverride": {
+            "input": 7.0,
+            "output": 33.0,
+            "setAt": 1794391000
+          },
+          "billing": "plan_included"
+        }
+      },
+      {
+        "provider": "claude",
+        "modelId": "claude-sonnet-5-5",
+        "benchmarkMatch": {
+          "source": "llmbenchmark",
+          "sourceId": "anthropic/claude-sonnet-5.5",
+          "matchedBy": "normalized_id"
+        },
+        "scores": [
+          {
+            "use": "coding",
+            "metric": "livebench_coding",
+            "board": "livebench",
+            "value": 0.772,
+            "unit": "ratio",
+            "observedAt": "2026-11-11",
+            "sourceUrl": "https://livebench.ai/data/20261106/table.csv",
+            "nModelsInMetric": 30,
+            "rank": 14
+          }
+        ],
+        "price": {
+          "reference": {
+            "kind": "per_token_list",
+            "unit": "usd_per_1m_tokens",
+            "reference": true,
+            "input": 2.0,
+            "output": 10.0,
+            "cacheRead": 0.1,
+            "cacheWrite": 2.5,
+            "tiers": [],
+            "source": {
+              "name": "models.dev",
+              "url": "https://models.dev/api.json",
+              "path": "anthropic.models.claude-sonnet-5-5.cost"
+            },
+            "fetchedAt": 1794390000,
+            "sourceDataDate": "2026-09-28"
+          },
+          "measured": {
+            "input": null,
+            "output": null,
+            "upperBound": true,
+            "basis": "quota_per_million (reserved: filled by the usage statistics)",
+            "nSamples": 0
+          },
+          "billing": "plan_included"
+        }
+      },
+      {
+        "provider": "openai",
+        "modelId": "gpt-9-unknown",
+        "scores": [],
+        "price": {
+          "reference": {
+            "kind": "unknown",
+            "unit": "usd_per_1m_tokens",
+            "reference": true,
+            "tiers": [],
+            "fetchedAt": 1794390000,
+            "reason": "not_listed"
+          },
+          "billing": "unknown"
+        }
+      }
+    ],
+    "sources": [
+      {
+        "name": "LLMBenchmark.ai",
+        "url": "https://llmbenchmark.ai",
+        "license": "CC BY 4.0",
+        "attribution": "LLMBenchmark.ai (https://llmbenchmark.ai)"
+      },
+      {
+        "name": "models.dev",
+        "url": "https://models.dev",
+        "license": "MIT"
+      }
+    ],
+    "fetchEnabled": true,
+    "fetchedAt": 1794390000,
+    "stale": false,
+    "useMap": {
+      "coding": [
+        "livebench_coding",
+        "vals_vibe_code",
+        "tbench_4_0_accuracy",
+        "scale_swe_bench_pro_v2",
+        "cursorbench_4_0_score",
+        "epoch_frontierswe"
+      ],
+      "reasoning": [
+        "livebench_reasoning",
+        "epoch_gpqa_diamond",
+        "epoch_arc_agi"
+      ],
+      "math": [
+        "epoch_otis_mock_aime",
+        "epoch_frontiermath",
+        "epoch_proofbench"
+      ],
+      "agentic": [
+        "livebench_long_agentic",
+        "livebench_browser",
+        "epoch_apex_agents"
+      ],
+      "long_context": [],
+      "general": [
+        "aa_intelligence_index"
+      ],
+      "speed": [
+        "or_output_tokens_per_second",
+        "or_time_to_first_token_s"
+      ]
+    }
+  }
+}

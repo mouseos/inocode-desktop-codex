@@ -1,0 +1,11 @@
+{
+  "method": "inocode/knowledge/promote",
+  "request": {
+    "id": "rule-0005",
+    "cwd": "D:\\work\\software\\OSS\\ino-code"
+  },
+  "response": {
+    "id": "rule-0001"
+  },
+  "note": "プロジェクトの記録を共通(global)へ複製する。元のプロジェクトの記録は残る。response.id は共通側の新しい id。同じ種類・題・本文の有効な記録が共通にすでにあれば、その id を返す(重複して作らない)。存在しない id は invalid params。scope=project の規則は、cwd かその上位で最初に `.inocode/knowledge` を持つフォルダの下で動くセッションにだけ、禁止リストの注入とガードの照合に効く。規則の front-matter の `appliesTo`(パスの glob の配列。絶対でも gui/inocode-desktop のような相対でもよい)があれば、セッションの cwd かその操作のパスが合うときだけ効く。`match` には commands / paths に加え、tools(ツール名の glob)、mcp(`server` または `server/tool` の glob)、models(モデル名の glob)、content(書き込む内容の正規表現)、excludePaths(この glob に合うパスを触る操作は対象外)を書ける。書かれた条件の組は全部合うこと(commands と paths はどちらかでよい)。"
+}

@@ -37,6 +37,9 @@ export global StatsState {
     in property <[StatsBar]> days;
     in property <string> note;
     in property <bool> empty: false;
+    // The shares of the windows are read from the whole account: they may hold other devices (an upper bound).
+    in property <bool> upper-bound: false;
+    in property <string> elsewhere;
     in-out property <string> est-model;
     in-out property <string> est-uncached;
     in-out property <string> est-cached;
@@ -132,8 +135,8 @@ export component StatsPage inherits Rectangle {
                     Cell { text: "入力"; color: Theme.fg-tertiary; font-size: 11px; }
                     Cell { text: "キャッシュ"; color: Theme.fg-tertiary; font-size: 11px; }
                     Cell { text: "出力"; color: Theme.fg-tertiary; font-size: 11px; }
-                    Cell { text: "5時間枠"; color: Theme.fg-tertiary; font-size: 11px; }
-                    Cell { text: "週枠"; color: Theme.fg-tertiary; font-size: 11px; }
+                    Cell { text: StatsState.upper-bound ? "5時間枠 ≤" : "5時間枠"; color: Theme.fg-tertiary; font-size: 11px; }
+                    Cell { text: StatsState.upper-bound ? "週枠 ≤" : "週枠"; color: Theme.fg-tertiary; font-size: 11px; }
                     Cell { text: "tok/s"; color: Theme.fg-tertiary; font-size: 11px; }
                 }
                 for m in StatsState.models: Rectangle {
@@ -161,6 +164,8 @@ export component StatsPage inherits Rectangle {
                     ma := TouchArea { mouse-cursor: pointer; clicked => { StatsState.select-model(m.name); } }
                 }
             }
+
+            if StatsState.elsewhere != "": Text { text: StatsState.elsewhere; color: Theme.fg-tertiary; font-size: 11px; wrap: word-wrap; }
 
             Rectangle { height: 8px; }
             Heading { text: "時間帯ごとの速度(tok/s)"; }
