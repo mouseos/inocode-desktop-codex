@@ -177,6 +177,7 @@ pub(crate) fn begin(app: &AppWindow, kind: &str) {
     let known = match kind {
         "chatgpt" => Some("openai"),
         "claude" => Some("claude"),
+        "deepai" => Some("deepai"),
         k if k.starts_with("key:") => Some(&k[4..]),
         _ => None,
     };
@@ -194,6 +195,11 @@ pub(crate) fn begin(app: &AppWindow, kind: &str) {
         "claude" => {
             st.set_add_kind("claude".into());
             st.set_add_title("Claude でログイン".into());
+            st.set_add_step(2);
+        }
+        "deepai" => {
+            st.set_add_kind("deepai".into());
+            st.set_add_title("DeepAI でログイン".into());
             st.set_add_step(2);
         }
         k if k.starts_with("key:") => {
@@ -313,6 +319,13 @@ fn set_rows(app: &AppWindow) {
             if q.is_empty() || title.to_lowercase().contains(&q) || kind.to_lowercase().contains(&q) || name.to_lowercase().contains(&q) {
                 rows.push(AddRow { id: rid.into(), title: title.into(), kind: kind.into(), provider: id.as_str().into() });
             }
+        }
+    }
+    // DeepAI signs in through the browser as well as with a pasted key (its authKinds list the key only).
+    if let Some((id, name, _)) = providers.iter().find(|p| p.0 == "deepai" && (pid.is_empty() || p.0 == pid)) {
+        let title = format!("{name} でログイン");
+        if q.is_empty() || title.to_lowercase().contains(&q) || "ログイン".contains(&q) || name.to_lowercase().contains(&q) {
+            rows.insert(0, AddRow { id: "deepai".into(), title: title.into(), kind: "ログイン".into(), provider: id.as_str().into() });
         }
     }
     app.global::<AccountsState>().set_add_rows(ModelRc::from(Rc::new(VecModel::from(rows))));
@@ -597,6 +610,23 @@ fn history_rows(v: &Value) -> Vec<HistRow> {
         .collect()
 }
 
+/// "2026-11-13T00:00:00Z" as seconds since the epoch (UTC); None when it is not that form.
+fn iso_secs(t: &str) -> Option<i64> {
+    let b = t.as_bytes();
+    if b.len() < 19 || b[4] != b'-' || b[7] != b'-' || !(b[10] == b'T' || b[10] == b' ') {
+        return None;
+    }
+    let n = |r: std::ops::Range<usize>| t.get(r)?.parse::<i64>().ok();
+    let (y, m, d, hh, mm, ss) = (n(0..4)?, n(5..7)?, n(8..10)?, n(11..13)?, n(14..16)?, n(17..19)?);
+    // days from civil (Howard Hinnant)
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Some((era * 146097 + doe - 719468) * 86400 + hh * 3600 + mm * 60 + ss)
+}
+
 fn card(a: &Value, now: i64) -> AcctCard {
     let credit = credit_view(a);
     let kind = s(a, "kind");
@@ -609,13 +639,34 @@ fn card(a: &Value, now: i64) -> AcctCard {
             }
         }
     }
+    // DeepAI: the Theos balance as a bar (what is left of what was granted), or why it is not read.
+    let mut balance_error = String::new();
+    if let Some(d) = a.get("deepai").filter(|d| d.is_object()) {
+        match s(d, "balanceStatus") {
+            "ok" => {
+                let bal = s(d, "balance");
+                let granted = s(d, "granted");
+                let (b, g) = (bal.parse::<f64>().ok(), granted.parse::<f64>().ok());
+                if let Some(b) = b {
+                    let used = match g {
+                        Some(g) if g > 0.0 => ((g - b) / g * 100.0).clamp(0.0, 100.0) as f32,
+                        _ => 0.0,
+                    };
+                    let label = if granted.is_empty() { format!("Theos 残高 {bal}") } else { format!("Theos 残高 {bal} / {granted}") };
+                    bars.push(AcctBar { label: label.into(), pct: used, remaining: true, reset: reset_text(iso_secs(s(d, "refreshAt"))).into() });
+                }
+            }
+            "error" => balance_error = if s(d, "error").is_empty() { "残高を読めませんでした".to_string() } else { crate::errmsg::short(s(d, "error")) },
+            _ => {}
+        }
+    }
     let full = bars.iter().any(|b| b.pct >= 99.5);
     let recover = a
         .get("cooldownUntil")
         .and_then(Value::as_i64)
         .filter(|t| *t > now)
         .map(|t| format!("{}に回復 · あと{}", when_text(t), span_jp(t - now)))
-        .unwrap_or_default();
+        .unwrap_or(balance_error);
     let in_use = a.get("inUse").and_then(Value::as_bool).unwrap_or(false);
     let (badge, tone) = match s(a, "state") {
         "cooldown" if full => ("上限に達しています", "warn"),
@@ -745,7 +796,11 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         let Some(app) = weak.upgrade() else { return };
         let st = app.global::<AccountsState>();
         let kind = st.get_add_kind().to_string();
-        let provider = if kind == "claude" { "claude" } else { "openai" };
+        let provider = match kind.as_str() {
+            "claude" => "claude",
+            "deepai" => "deepai",
+            _ => "openai",
+        };
         let alias = st.get_add_alias().trim().to_string();
         let alias = if alias.is_empty() { crate::settings_page::provider_name(provider) } else { alias };
         if let Some(id) = DATA.with(|d| d.borrow().reauth_id.clone()) {
@@ -1193,7 +1248,9 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
         "acct.login.key" | "acct.addkey" => {
             DATA.with(|d| d.borrow_mut().pending_key = None);
             st.set_add_step(0);
-            note(app, "API キーを追加しました");
+            // The server could not check the key (no connection): it is kept, and says so.
+            let unverified = v.get("verification").and_then(|x| x.get("status")).and_then(Value::as_str) == Some("unverified");
+            note(app, if unverified { "API キーを追加しました(検証できませんでした)" } else { "API キーを追加しました" });
             refresh(false);
         }
         _ => {}

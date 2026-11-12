@@ -298,14 +298,14 @@ component AddDialog inherits Rectangle {
                     fa := TouchArea { mouse-cursor: pointer; clicked => { AccountsState.add-step = 3; AccountsState.add-title = "OpenAI 互換のプロバイダを追加"; AccountsState.login-note = ""; } }
                 }
             }
-            if AccountsState.add-step == 2 && (AccountsState.add-kind == "chatgpt" || AccountsState.add-kind == "claude"): VerticalLayout {
+            if AccountsState.add-step == 2 && (AccountsState.add-kind == "chatgpt" || AccountsState.add-kind == "claude" || AccountsState.add-kind == "deepai"): VerticalLayout {
                 spacing: 8px;
                 Field { placeholder: "別名(任意)"; text <=> AccountsState.add-alias; }
                 if !AccountsState.waiting: HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
                     Chip {
-                        label: AccountsState.add-kind == "chatgpt" ? "ChatGPT でログイン" : "Claude でログイン";
+                        label: AccountsState.add-kind == "chatgpt" ? "ChatGPT でログイン" : AccountsState.add-kind == "deepai" ? "DeepAI でログイン" : "Claude でログイン";
                         active: true;
                         clicked => { AccountsState.start-login("browser"); }
                     }

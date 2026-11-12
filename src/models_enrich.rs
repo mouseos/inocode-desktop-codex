@@ -127,7 +127,19 @@ pub(crate) fn parse(v: &Value) -> (HashMap<(String, String), Enrich>, Vec<String
                     .collect()
             })
             .unwrap_or_default();
-        let (price_text, price_out) = m.get("price").map(price_of).unwrap_or_default();
+        let (mut price_text, price_out) = m.get("price").map(price_of).unwrap_or_default();
+        // DeepAI: free, or what a request costs in Theos (read from its catalog by the server).
+        if let Some(t) = m.get("theos").filter(|t| t.is_object()) {
+            let theos = if t.get("isFree").and_then(Value::as_bool).unwrap_or(false) {
+                "無料".to_string()
+            } else {
+                match t.get("theosPerRequest").and_then(Value::as_str) {
+                    Some(n) => format!("Theos {n} / 回"),
+                    None => "Theos 消費".to_string(),
+                }
+            };
+            price_text = if price_text.is_empty() { theos } else { format!("{theos} · {price_text}") };
+        }
         out.insert(key, Enrich { scores, price_text, price_out });
     }
     let credits = v
