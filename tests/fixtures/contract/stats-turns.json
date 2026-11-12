@@ -1,0 +1,33 @@
+{
+  "request": { "threadId": "01a1cc2d-ef58-78b0-b486-12dbcf42a07e", "limit": 2 },
+  "response": {
+    "turns": [
+      {
+        "turnId": "01a1cc2e-f156-7653-944f-492c485473cd",
+        "startedAt": 1794426990,
+        "completedAt": 1794427020,
+        "durationMs": 29102,
+        "timeToFirstTokenMs": 7131,
+        "requests": 3,
+        "outputTokens": 1180,
+        "avgTokensPerSecond": 52.4,
+        "speedSamples": 3,
+        "model": "gpt-5.6-luna",
+        "provider": "openai"
+      },
+      {
+        "turnId": "01a1cc3a-0000-7000-8000-000000000001",
+        "startedAt": 1794427100,
+        "completedAt": 1794427130,
+        "durationMs": 30000,
+        "timeToFirstTokenMs": null,
+        "requests": 1,
+        "outputTokens": 40,
+        "avgTokensPerSecond": null,
+        "speedSamples": 0,
+        "model": "gpt-5.6-luna",
+        "provider": "openai"
+      }
+    ]
+  }
+}

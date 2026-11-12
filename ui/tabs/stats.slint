@@ -36,6 +36,8 @@ export global StatsState {
     in property <string> selected-model;
     in property <[StatsBar]> hours;
     in property <[StatsBar]> days;
+    // the turns of the open thread: the speed each was measured at
+    in property <[StatsBar]> turns;
     in property <string> note;
     in property <bool> empty: false;
     // The shares of the windows are read from the whole account: they may hold other devices (an upper bound).
@@ -184,6 +186,13 @@ export component StatsPage inherits Rectangle {
                 }
             }
             Bars { bars: StatsState.hours; }
+
+            if StatsState.turns.length > 0: VerticalLayout {
+                spacing: 6px;
+                Rectangle { height: 8px; }
+                Heading { text: "このスレッドのターンごとの速度(tok/s)"; }
+                Bars { bars: StatsState.turns; }
+            }
 
             Rectangle { height: 8px; }
             Heading { text: "日ごとの推移(5時間枠の消費と速度)" + (StatsState.selected-model == "" ? "" : " · " + StatsState.selected-model); }

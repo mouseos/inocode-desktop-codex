@@ -15,6 +15,7 @@ const TAG_HOURLY: &str = "stats.hourly";
 const TAG_DAILY: &str = "stats.daily";
 const TAG_ESTIMATE: &str = "stats.estimate";
 const TAG_SEED: &str = "stats.seed";
+const TAG_TURNS: &str = "stats.turns";
 
 /// 期間の選択肢(日数)。StatsState.periods と同じ順。
 const PERIODS: [i64; 3] = [3, 7, 30];
@@ -28,6 +29,8 @@ struct S {
     summary: Value,
     hourly: Value,
     daily: Value,
+    /// the turns of the open thread (inocode/stats/turns), oldest first
+    turns: Vec<Value>,
     selected_model: String,
     job_id: String,
 }
@@ -271,6 +274,46 @@ fn refresh(app: &AppWindow, host: &Host) {
     host.rpc(TAG_SUMMARY, "inocode/stats/summary", json!({ "days": days_of(app), "model": Value::Null, "provider": Value::Null }));
     host.rpc(TAG_HOURLY, "inocode/stats/hourly", json!({ "days": days_of(app), "model": Value::Null }));
     host.rpc(TAG_DAILY, "inocode/stats/daily", json!({ "days": DAILY_DAYS }));
+    // The speed of the turns of the open thread (the past ones too).
+    let thread = crate::state::STATE.with(|s| s.borrow().active.clone());
+    if thread.is_empty() {
+        S.with(|s| s.borrow_mut().turns.clear());
+        render_turns(app);
+    } else {
+        host.rpc(TAG_TURNS, "inocode/stats/turns", json!({ "threadId": thread, "limit": TURNS_SHOWN }));
+    }
+}
+
+/// How many of the latest turns the speed chart shows
+const TURNS_SHOWN: usize = 30;
+
+/// One bar per turn (the number of the turn under every fifth): the speed it was measured at; a turn
+/// without a measured speed has no bar and no number.
+fn turn_bars(turns: &[Value]) -> Vec<StatsBar> {
+    let speeds: Vec<Option<f64>> = turns.iter().map(|t| num(t, "avgTokensPerSecond")).collect();
+    let max = speeds.iter().flatten().cloned().fold(0.0_f64, f64::max);
+    let first = turns.len().saturating_sub(TURNS_SHOWN);
+    speeds
+        .iter()
+        .enumerate()
+        .skip(first)
+        .map(|(i, v)| StatsBar {
+            top: v.map(|a| format!("{}", a.round() as i64)).unwrap_or_default().into(),
+            label: if (i + 1) % 5 == 0 || i == first { format!("{}", i + 1) } else { String::new() }.into(),
+            sub: "".into(),
+            ratio: match v {
+                Some(a) if max > 0.0 => (*a / max) as f32,
+                _ => 0.0,
+            },
+            faint: false,
+        })
+        .collect()
+}
+
+fn render_turns(app: &AppWindow) {
+    let bars = S.with(|s| turn_bars(&s.borrow().turns));
+    let st = app.global::<StatsState>();
+    st.set_turns(ModelRc::from(Rc::new(VecModel::from(bars))));
 }
 
 /// グラフに出すモデル: 選んだモデル。選んでいない(またはこの期間に無い)ときは、表の先頭のモデル。
@@ -420,6 +463,14 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
                 S.with(|s| s.borrow_mut().daily = payload(v).clone());
                 render_charts(app);
             }
+            (TAG_TURNS, Ok(v)) => {
+                S.with(|s| s.borrow_mut().turns = payload(v).get("turns").and_then(Value::as_array).cloned().unwrap_or_default());
+                render_turns(app);
+            }
+            (TAG_TURNS, Err(_)) => {
+                S.with(|s| s.borrow_mut().turns.clear());
+                render_turns(app);
+            }
             (TAG_ESTIMATE, Ok(v)) => st.set_est_result(estimate_label(payload(v)).into()),
             (TAG_ESTIMATE, Err(e)) => st.set_est_result(e.as_str().into()),
             (TAG_SEED, Ok(v)) => {
@@ -504,6 +555,17 @@ mod tests {
         assert_eq!(other.len(), 24);
         assert_ne!(bars[1].top, other[1].top);
         assert!(hour_bars(&hourly, "none").is_empty());
+    }
+
+    #[test]
+    fn turn_bars_leave_unmeasured_turns_blank() {
+        let turns = fixture("stats-turns.json");
+        let list = payload(&turns).get("turns").and_then(Value::as_array).cloned().unwrap();
+        let bars = turn_bars(&list);
+        assert_eq!(bars.len(), 2);
+        assert_eq!((bars[0].top.as_str(), bars[0].ratio), ("52", 1.0));
+        assert_eq!((bars[1].top.as_str(), bars[1].ratio), ("", 0.0));
+        assert!(turn_bars(&[]).is_empty());
     }
 
     #[test]
