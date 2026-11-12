@@ -44,6 +44,20 @@ pub(crate) fn refresh_providers() {
 }
 
 pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>) {
+    // The chat went on in a fork on the other provider's model: open it (its history is shown); when
+    // the server cannot fork, start a new thread as before.
+    if tag == "model.fork" {
+        if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
+            match result.as_ref().ok().and_then(|v| v.pointer("/thread/id")).and_then(Value::as_str) {
+                Some(id) => {
+                    h.send(Command::OpenThread(id.to_string()));
+                    crate::sidebar::refresh();
+                }
+                None => h.send(Command::NewThread),
+            }
+        }
+        return;
+    }
     if tag == "model.accounts" {
         let Ok(v) = result else { return };
         let mut providers: Vec<String> = Vec::new();

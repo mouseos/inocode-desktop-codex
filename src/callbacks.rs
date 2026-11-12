@@ -132,7 +132,25 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
             h.send(Command::SetDaybreak(after));
         }
         if switch_thread {
-            h.send(Command::NewThread);
+            // A thread keeps its provider; the conversation goes on in a fork of it that runs on the
+            // chosen model (the history is the fork's own). An empty chat just starts a new thread.
+            let (active, model, provider) = STATE.with(|s| {
+                let st = s.borrow();
+                (st.active.clone(), st.settings.model.clone(), st.settings.model_provider.clone())
+            });
+            let has_chat = crate::view::messages_with(&app, |m| m.row_count()).unwrap_or(0) > 0;
+            if has_chat && !active.is_empty() {
+                let mut p = serde_json::json!({ "threadId": active });
+                if let Some(m) = model {
+                    p["model"] = serde_json::json!(m);
+                }
+                if let Some(pr) = provider {
+                    p["modelProvider"] = serde_json::json!(pr);
+                }
+                h.send(Command::Rpc { tag: "model.fork".into(), method: "thread/fork".into(), params: p });
+            } else {
+                h.send(Command::NewThread);
+            }
         }
     });
     let weak = app.as_weak();

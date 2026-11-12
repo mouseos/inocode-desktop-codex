@@ -29,6 +29,24 @@ fn run_step(app: &AppWindow, step: String) {
         if let Some(a) = first {
             app.global::<AppState>().invoke_decide(a.key, d.into());
         }
+    } else if let Some(word) = step.strip_prefix("@open:") {
+        // "@open:<words>": the first session whose title has the words (a click on it in the list).
+        let id = STATE.with(|s| s.borrow().threads.iter().find(|t| t.title.contains(word)).map(|t| t.id.clone()));
+        if let Some(id) = id {
+            app.global::<AppState>().invoke_open_thread(id.into());
+        }
+    } else if let Some(spec) = step.strip_prefix("@pick:") {
+        // "@pick:<provider>/<model id>": the row of that model in the picker, as a click on it.
+        let (provider, id) = spec.split_once('/').unwrap_or(("openai", spec));
+        let index = STATE.with(|s| {
+            let mut st = s.borrow_mut();
+            st.provider_open.insert(provider.to_string(), true);
+            shown_models(&st).iter().position(|it| matches!(it, Item::Model(m, Kind::Normal) if m.id == id && m.provider == provider))
+        });
+        if let Some(i) = index {
+            // the section was closed when the rows were counted: the rows are asked again
+            app.global::<AppState>().invoke_pick_model(i as i32);
+        }
     } else if step == "@run-plan" {
         crate::reply::act(app, "run-plan", 0);
     } else if let Some(f) = step.strip_prefix("@attach:") {
@@ -415,9 +433,12 @@ pub(crate) fn install(app: &AppWindow) {
             if started.elapsed() < Duration::from_secs(2) {
                 return;
             }
+            // With INOCODE_GUI_MODEL the run waits until that model is on the list (a list of another
+            // provider arrives later) and never sends anything under another model.
             let ready = STATE.with(|s| {
                 let st = s.borrow();
-                !st.active.is_empty() && !visible_models(&st).is_empty()
+                let v = visible_models(&st);
+                !st.active.is_empty() && !v.is_empty() && model.as_deref().map_or(true, |m| v.iter().any(|x| x.id == m || x.name == m))
             });
             if !ready {
                 return;
@@ -436,7 +457,7 @@ pub(crate) fn install(app: &AppWindow) {
             let chosen = STATE.with(|s| {
                 let st = s.borrow();
                 let v = visible_models(&st);
-                selected_model(&st, &v).is_some() && !st.active.is_empty()
+                selected_model(&st, &v).map_or(false, |m| model.as_deref().map_or(true, |w| m.id == w || m.name == w)) && !st.active.is_empty()
             });
             if (chosen && waited >= 4) || waited > 40 {
                 if chosen {

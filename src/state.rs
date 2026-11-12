@@ -152,6 +152,24 @@ pub(crate) fn shown_models(st: &State) -> Vec<Item<'_>> {
         }
     }
     let mut rows = Vec::new();
+    // "総合順位": one list over all providers, by the overall rank (the unranked last).
+    if st.use_filter.as_deref() == Some("general") {
+        let mut hits: Vec<&&ModelInfo> = visible
+            .iter()
+            .filter(|m| q.is_empty() || m.name.to_lowercase().contains(&q) || m.id.to_lowercase().contains(&q))
+            .collect();
+        hits.sort_by(|a, b| crate::models_enrich::order_key(st, a).partial_cmp(&crate::models_enrich::order_key(st, b)).unwrap_or(std::cmp::Ordering::Equal));
+        for m in hits {
+            rows.push(Item::Model(m, Kind::Normal));
+            if m.fast_tier().is_some() {
+                rows.push(Item::Model(m, Kind::Fast));
+            }
+            if m.has_daybreak_variant() {
+                rows.push(Item::Model(m, Kind::Daybreak));
+            }
+        }
+        return rows;
+    }
     for p in providers {
         let mut hits: Vec<&&ModelInfo> = visible
             .iter()
