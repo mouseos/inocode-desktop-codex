@@ -8,6 +8,7 @@ import { TeamMetrics, TeamState } from "team.slint";
 // モデル別の表の 1 行
 export struct StatsModel {
     name: string,
+    label: string,
     uncached: string,
     cached: string,
     output: string,
@@ -68,7 +69,7 @@ component Cell inherits Text {
     font-size: 12px;
     vertical-alignment: center;
     horizontal-alignment: right;
-    width: 64px;
+    width: 58px;
 }
 
 component Bars inherits Rectangle {
@@ -131,7 +132,7 @@ export component StatsPage inherits Rectangle {
                     height: 22px;
                     padding-left: 8px;
                     padding-right: 8px;
-                    Text { text: "モデル"; color: Theme.fg-tertiary; font-size: 11px; vertical-alignment: center; horizontal-stretch: 1; }
+                    Text { text: "モデル"; color: Theme.fg-tertiary; font-size: 11px; vertical-alignment: center; horizontal-stretch: 1; min-width: 76px; }
                     Cell { text: "入力"; color: Theme.fg-tertiary; font-size: 11px; }
                     Cell { text: "キャッシュ"; color: Theme.fg-tertiary; font-size: 11px; }
                     Cell { text: "出力"; color: Theme.fg-tertiary; font-size: 11px; }
@@ -151,7 +152,7 @@ export component StatsPage inherits Rectangle {
                         HorizontalLayout {
                             spacing: 6px;
                             height: 22px;
-                            Text { text: m.name; color: Theme.fg; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                            Text { text: m.label; color: Theme.fg; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; min-width: 76px; overflow: elide; }
                             Cell { text: m.uncached; }
                             Cell { text: m.cached; }
                             Cell { text: m.output; }
@@ -169,13 +170,17 @@ export component StatsPage inherits Rectangle {
 
             Rectangle { height: 8px; }
             Heading { text: "時間帯ごとの速度(tok/s)"; }
-            HorizontalLayout {
-                spacing: 6px;
-                alignment: start;
-                for m in StatsState.models: Tag {
-                    label: m.name;
-                    selected: m.selected;
-                    clicked => { StatsState.select-model(m.name); }
+            Flickable {
+                height: 28px;
+                content-width: speed-chips.preferred-width;
+                speed-chips := HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    for m in StatsState.models: Tag {
+                        label: m.label;
+                        selected: m.selected;
+                        clicked => { StatsState.select-model(m.name); }
+                    }
                 }
             }
             Bars { bars: StatsState.hours; }
@@ -186,13 +191,17 @@ export component StatsPage inherits Rectangle {
 
             Rectangle { height: 8px; }
             Heading { text: "見積もり"; }
-            HorizontalLayout {
-                spacing: 6px;
-                alignment: start;
-                for m in StatsState.models: Tag {
-                    label: m.name;
-                    selected: StatsState.est-model == m.name;
-                    clicked => { StatsState.est-model = m.name; }
+            Flickable {
+                height: 28px;
+                content-width: est-chips.preferred-width;
+                est-chips := HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    for m in StatsState.models: Tag {
+                        label: m.label;
+                        selected: StatsState.est-model == m.name;
+                        clicked => { StatsState.est-model = m.name; }
+                    }
                 }
             }
             HorizontalLayout {

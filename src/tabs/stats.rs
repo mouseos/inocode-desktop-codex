@@ -119,6 +119,7 @@ fn model_rows(summary: &Value, selected: &str) -> Vec<StatsModel> {
             let name = str_of(m, "model");
             StatsModel {
                 name: name.into(),
+                label: name.into(),
                 uncached: tok("uncachedInput").into(),
                 cached: tok("cachedInput").into(),
                 output: tok("output").into(),
@@ -292,14 +293,53 @@ fn render_charts(app: &AppWindow) {
     st.set_days(ModelRc::from(Rc::new(VecModel::from(days))));
 }
 
+/// The models the app knows (id, name), hidden ones too: what the server lists for each provider.
+fn catalog() -> Vec<(String, String)> {
+    crate::state::STATE.with(|st| {
+        let st = st.borrow();
+        let mut v: Vec<(String, String)> = Vec::new();
+        let all = st.provider_models.values().flatten().chain(st.models.iter()).chain(st.extra.iter());
+        for m in all {
+            if !v.iter().any(|(id, _)| *id == m.id) {
+                v.push((m.id.clone(), if m.name.is_empty() { m.id.clone() } else { m.name.clone() }));
+            }
+        }
+        v
+    })
+}
+
+/// The summary with only the models the catalog knows (ids it cannot place — a test, an old
+/// provider — stay out of the lists; the summary itself keeps them). Unchanged while the
+/// catalog is not loaded.
+fn known_models(summary: &Value, catalog: &[(String, String)]) -> Value {
+    let mut out = summary.clone();
+    if catalog.is_empty() {
+        return out;
+    }
+    if let Some(a) = out.get_mut("models").and_then(Value::as_array_mut) {
+        a.retain(|m| catalog.iter().any(|(id, _)| id == str_of(m, "model")));
+    }
+    out
+}
+
 fn render_models(app: &AppWindow) {
     let st = app.global::<StatsState>();
+    let catalog = catalog();
     let (rows, selected, names, upper, elsewhere) = S.with(|s| {
         let s = s.borrow();
-        let names = model_names(&s.summary);
+        let known = known_models(&s.summary, &catalog);
+        let names = model_names(&known);
         let selected = effective_model(&s.selected_model, &names);
         (
-            model_rows(&s.summary, &selected),
+            {
+                let mut rows = model_rows(&known, &selected);
+                for r in rows.iter_mut() {
+                    if let Some((_, n)) = catalog.iter().find(|(id, _)| id.as_str() == r.name.as_str()) {
+                        r.label = n.as_str().into();
+                    }
+                }
+                rows
+            },
             selected,
             names,
             s.summary.get("quotaIsUpperBound").and_then(Value::as_bool).unwrap_or(false),
