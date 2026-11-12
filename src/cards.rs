@@ -339,13 +339,9 @@ fn status(app: &AppWindow, text: &str) {
     app.global::<AppState>().set_status_level(2);
 }
 
-fn open_tab(app: &AppWindow, tab: &str) {
-    let index = match tab {
-        "knowledge" => 1,
-        "evidence" => 2,
-        _ => return,
-    };
-    app.global::<Tabs>().invoke_select(index);
+/// Go to what a card leads to: the tab, its part and the record (`target` of the server).
+fn open_target(app: &AppWindow, tab: &str, sub: &str, reference: &str) {
+    crate::tabs::kb::go_target(app, tab, sub, reference);
 }
 
 fn act(app: &AppWindow, index: usize, button: &str) {
@@ -358,7 +354,7 @@ fn act(app: &AppWindow, index: usize, button: &str) {
         (st.active_cwd.clone(), st.active.clone())
     });
     match (info, button) {
-        (Info::Guard { .. }, "open") => open_tab(app, "knowledge"),
+        (Info::Guard { data, .. }, "open") => open_target(app, "knowledge", "prohibitions", s(&data, "ruleId")),
         (Info::Guard { data, state, relaxation, scope, .. }, "relax") => set_info(app, &id, Info::Guard { data, state, expanded: true, relaxation, scope }),
         (Info::Guard { data, .. }, b) if b.starts_with("scope:") => {
             let scope = b.trim_start_matches("scope:");
@@ -385,7 +381,8 @@ fn act(app: &AppWindow, index: usize, button: &str) {
         }
         (Info::Reg { data, .. }, "") => {
             let one = data.get("items").and_then(Value::as_array).and_then(|a| a.first()).unwrap_or(&data);
-            open_tab(app, one.pointer("/target/tab").and_then(Value::as_str).unwrap_or("evidence"));
+            let t = |k: &str| one.pointer(&format!("/target/{k}")).and_then(Value::as_str).unwrap_or("").to_string();
+            open_target(app, &t("tab"), &t("sub"), &t("ref"));
         }
         _ => {}
     }
