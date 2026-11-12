@@ -425,7 +425,12 @@ mod tests {
         assert_eq!(key.kind_label, "API キー");
         let off = account_row(&list[3], 0);
         assert!(!off.enabled);
-        assert!(!serde_json::to_string(&list).unwrap().contains('@'));
+        // the server list carries an email for each account; no row text may show it
+        for a in &list {
+            let r = account_row(a, 1794390000);
+            let text = [r.id.as_str(), r.alias.as_str(), r.kind_label.as_str(), r.plan.as_str(), r.five_label.as_str(), r.weekly_label.as_str(), r.state.as_str(), r.state_label.as_str(), r.cooldown_label.as_str()].join(" ");
+            assert!(!text.contains('@'), "{text}");
+        }
     }
 
     #[test]

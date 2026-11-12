@@ -505,7 +505,12 @@ mod tests {
         assert!(estimate_params("m", 3, "", "", "").is_err());
         assert!(estimate_params("m", 3, "abc", "", "").is_err());
         assert!(estimate_params("m", 3, "-5", "", "").is_err());
-        assert_eq!(estimate_label(&fixture("stats-estimate.json")), "5時間枠 約 1.4%、週枠 約 0.3%、約 45 秒");
+        // the fixture is an upper bound (other devices may be in it)
+        assert_eq!(estimate_label(&fixture("stats-estimate.json")), "5時間枠 約 1.4% まで、週枠 約 0.30% まで、約 45 秒");
+        assert_eq!(
+            estimate_label(&json!({ "primaryPercent": 1.4, "secondaryPercent": 0.3, "seconds": 45.0, "upperBound": false })),
+            "5時間枠 約 1.4%、週枠 約 0.30%、約 45 秒"
+        );
         assert_eq!(estimate_label(&json!({ "insufficient": true, "primaryPercent": null })), "データが足りない");
         assert_eq!(seconds_label(45.0), "約 45 秒");
     }
