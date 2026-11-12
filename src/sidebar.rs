@@ -247,7 +247,7 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
     let h = handle.clone();
     app.global::<SidebarState>().on_menu_pick(move |action| {
         let Some(app) = weak.upgrade() else { return };
-        if crate::attach::menu_pick(&app, &action) || crate::panel_data::menu_pick(&app, &action) || crate::nav::menu_pick(&app, &action) {
+        if crate::attach::menu_pick(&app, &action) || crate::panel_data::menu_pick(&app, &action) || crate::nav::menu_pick(&app, &action) || crate::reply::menu_pick(&app, &action) {
             return;
         }
         let id = MENU_FOR.with(|m| m.borrow().clone());

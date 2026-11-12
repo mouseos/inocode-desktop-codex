@@ -374,7 +374,7 @@ component ActionRow inherits HorizontalLayout {
         }
     }
     IconButton { glyph: "\u{e15e}"; box-size: 24px; icon-size: 14px; clicked => { MessageActions.act("reply", root.index); } }
-    if root.ref-id != "": IconButton {
+    IconButton {
         glyph: root.link-copied ? "\u{e5ca}" : Glyph.link;
         box-size: 24px;
         icon-size: 14px;
@@ -448,6 +448,13 @@ component ChatView inherits Rectangle {
                             max-width: 520px;
                             border-radius: Theme.radius-bubble;
                             background: Theme.bubble;
+                            TouchArea {
+                                pointer-event(e) => {
+                                    if (e.button == PointerEventButton.right && e.kind == PointerEventKind.up) {
+                                        MessageActions.context(mi, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                                    }
+                                }
+                            }
                             VerticalLayout {
                                 padding: 8px;
                                 padding-left: 12px;
@@ -472,17 +479,43 @@ component ChatView inherits Rectangle {
                                     alignment: start;
                                     for f in m.files: SentPill { label: f; }
                                 }
-                                if m.refs.length == 0 || m.shown != "": Text {
-                                    text: m.refs.length > 0 ? m.shown : m.text;
-                                    wrap: word-wrap;
-                                    color: Theme.fg;
-                                    font-size: Theme.body-font;
+                                if m.refs.length == 0 || m.shown != "": VerticalLayout {
+                                    spacing: 4px;
+                                    utxt := TextInput {
+                                        text: m.refs.length > 0 ? m.shown : m.text;
+                                        read-only: true;
+                                        wrap: word-wrap;
+                                        color: Theme.fg;
+                                        font-size: Theme.body-font;
+                                        selection-foreground-color: Theme.fg;
+                                        selection-background-color: #4d8ff566;
+                                    }
+                                    if utxt.anchor-position-byte-offset != utxt.cursor-position-byte-offset: HorizontalLayout {
+                                        alignment: end;
+                                        ApprovalButton {
+                                            label: "選択範囲を引用";
+                                            clicked => {
+                                                MessageActions.reply-selection(mi, min(utxt.anchor-position-byte-offset, utxt.cursor-position-byte-offset), max(utxt.anchor-position-byte-offset, utxt.cursor-position-byte-offset));
+                                                utxt.clear-selection();
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                     // The answer as blocks; "select" shows the plain text, which can be selected by dragging.
-                    if m.role == "assistant" && !select-mode && m.blocks.length > 0: MarkdownView { rows: m.blocks; }
+                    if m.role == "assistant" && !select-mode && m.blocks.length > 0: Rectangle {
+                        height: md.preferred-height;
+                        TouchArea {
+                            pointer-event(e) => {
+                                if (e.button == PointerEventButton.right && e.kind == PointerEventKind.up) {
+                                    MessageActions.context(mi, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                                }
+                            }
+                        }
+                        md := MarkdownView { rows: m.blocks; }
+                    }
                     if m.role == "assistant" && !select-mode && m.blocks.length == 0 && m.text != "": Text {
                         text: m.text;
                         wrap: word-wrap;

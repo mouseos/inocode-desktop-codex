@@ -33,6 +33,8 @@ thread_local! {
     static RESOLVED: RefCell<std::collections::HashMap<String, Resolved>> = RefCell::new(std::collections::HashMap::new());
     /// The keys that were asked and not answered yet.
     static ASKED_KEYS: RefCell<std::collections::HashSet<String>> = RefCell::new(std::collections::HashSet::new());
+    /// A button pressed on a message that had no number yet: (what, row), done when it has one.
+    static PENDING_ACT: RefCell<Option<(String, usize)>> = const { RefCell::new(None) };
     /// A jump to a message of another thread, made when that thread is open and numbered.
     static PENDING_JUMP: RefCell<Option<String>> = const { RefCell::new(None) };
     /// Messages whose number is still to be asked: (turn id, item index).
@@ -461,9 +463,16 @@ fn reply_to(app: &AppWindow, index: usize, part: Option<(usize, usize)>) {
         add_ref(app, Ref { id: m.ref_id.to_string(), hint, thread, range });
         return;
     }
-    // Not named yet: ask now.
+    // Not named yet: ask now. A message that does not know where it sits in the thread learns it
+    // first (the thread is read), and the button is pressed again when it has its number.
     if m.turn_id.is_empty() || thread.is_empty() {
-        status(app, "この発言の番号をまだ取得できません");
+        if thread.is_empty() {
+            status(app, "この発言の番号を取得できません");
+        } else {
+            PENDING_ACT.with(|p| *p.borrow_mut() = Some(("reply".to_string(), index)));
+            status(app, "番号を取得しています…");
+            after_turn(app);
+        }
         return;
     }
     if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
@@ -571,6 +580,7 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
         }
         pump();
         try_pending_jump(app);
+        retry_pending_act(app);
         return;
     }
     if let Some(rest) = tag.strip_prefix("reply.add|") {
@@ -610,6 +620,49 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
         refresh_rows(app);
         render_chips(app);
     }
+}
+
+/// A button that waited for the number of its message: done now when the message has one.
+fn retry_pending_act(app: &AppWindow) {
+    let Some((kind, index)) = PENDING_ACT.with(|p| p.borrow().clone()) else { return };
+    let model = app.global::<AppState>().get_messages();
+    if model.row_data(index).map_or(false, |m| !m.ref_id.is_empty()) {
+        PENDING_ACT.with(|p| *p.borrow_mut() = None);
+        act(app, &kind, index);
+    }
+}
+
+/// The menu of a right click on a message: what is done with the message, in the words of the
+/// desktop client; only what is implemented.
+pub(crate) fn context_menu(app: &AppWindow, index: usize, x: f32, y: f32) {
+    let model = app.global::<AppState>().get_messages();
+    let Some(m) = model.row_data(index) else { return };
+    if m.role != "user" && m.role != "assistant" {
+        return;
+    }
+    let it = |kind: &str, label: &str, glyph: &str| crate::sidebar::simple_item(&format!("msg:{kind}:{index}"), label, glyph);
+    let mut items = vec![
+        it("copy", if m.role == "user" { "メッセージをコピー" } else { "Markdown としてコピー" }, "\u{e14d}"),
+        it("copy-link", "リンクをコピー", "\u{e157}"),
+        it("reply", "引用", "\u{e15e}"),
+        crate::sidebar::separator(),
+    ];
+    if m.role == "user" {
+        items.push(it("rewind", "ここまで巻き戻す", "\u{e042}"));
+    } else {
+        items.push(it("fork", "ここからフォーク", "\u{e0b6}"));
+    }
+    crate::sidebar::open_menu(app, items, x, y);
+}
+
+/// A pick of the menu of a message: "msg:<what>:<row>".
+pub(crate) fn menu_pick(app: &AppWindow, action: &str) -> bool {
+    let Some(rest) = action.strip_prefix("msg:") else { return false };
+    let Some((kind, index)) = rest.rsplit_once(':') else { return true };
+    if let Ok(i) = index.parse::<i32>() {
+        app.global::<MessageActions>().invoke_act(kind.into(), i);
+    }
+    true
 }
 
 /// Scroll to the message with this number in the chat that is open.
@@ -659,6 +712,14 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
                     model.push(m);
                 }
             });
+            // INOCODE_GUI_DEMO_REPLY=<row>: press "reply" of that row (to look at the card it makes).
+            if let Some(i) = std::env::var("INOCODE_GUI_DEMO_REPLY").ok().and_then(|v| v.parse::<usize>().ok()) {
+                act(&app, "reply", i);
+            }
+            // INOCODE_GUI_DEMO_MENU=<row>: the menu of a right click on that row.
+            if let Some(i) = std::env::var("INOCODE_GUI_DEMO_MENU").ok().and_then(|v| v.parse::<usize>().ok()) {
+                context_menu(&app, i, 640.0, 260.0);
+            }
         });
         DEMO_TIMER.with(|t| *t.borrow_mut() = Some(timer));
     }
@@ -687,6 +748,12 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         jump_in_chat(&app, id.as_str());
     });
     let weak = app.as_weak();
+    app.global::<MessageActions>().on_context(move |index, x, y| {
+        if let Some(app) = weak.upgrade() {
+            context_menu(&app, index.max(0) as usize, x, y);
+        }
+    });
+    let weak = app.as_weak();
     app.global::<MessageActions>().on_reply_selection(move |index, start, end| {
         if let Some(app) = weak.upgrade() {
             reply_to(&app, index.max(0) as usize, Some((start.max(0) as usize, end.max(0) as usize)));
@@ -706,10 +773,19 @@ pub(crate) fn act(app: &AppWindow, kind: &str, index: usize) -> bool {
         "copy-link" => {
             let model = app.global::<AppState>().get_messages();
             let thread = STATE.with(|s| s.borrow().active.clone());
-            if let Some(m) = model.row_data(index).filter(|m| !m.ref_id.is_empty() && !thread.is_empty()) {
-                if let Err(e) = arboard::Clipboard::new().and_then(|mut c| c.set_text(link_of(&thread, m.ref_id.as_str()))) {
-                    status(app, &format!("コピーできませんでした: {e}"));
+            match model.row_data(index) {
+                Some(m) if !thread.is_empty() && !m.ref_id.is_empty() => {
+                    if let Err(e) = arboard::Clipboard::new().and_then(|mut c| c.set_text(link_of(&thread, m.ref_id.as_str()))) {
+                        status(app, &format!("コピーできませんでした: {e}"));
+                    }
                 }
+                // No number yet: the thread is read, the rows are numbered, and this is done again.
+                Some(_) if !thread.is_empty() => {
+                    PENDING_ACT.with(|p| *p.borrow_mut() = Some(("copy-link".to_string(), index)));
+                    status(app, "番号を取得しています…");
+                    after_turn(app);
+                }
+                _ => status(app, "この発言の番号を取得できません"),
             }
         }
         "copy-id" => {
