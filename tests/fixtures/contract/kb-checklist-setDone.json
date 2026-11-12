@@ -1,0 +1,11 @@
+{
+  "method": "inocode/kb/checklist/setDone",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "role": "目視確認",
+    "itemId": "chk-0007",
+    "done": true
+  },
+  "response": {},
+  "note": "check が user か self の項目を、本人が「済/未」にする。machine の項目は自動(拒否: -32602)。"
+}

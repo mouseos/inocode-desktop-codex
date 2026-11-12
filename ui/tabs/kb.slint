@@ -1,0 +1,535 @@
+import { Theme } from "../theme.slint";
+import { Icon, Glyph } from "../icons.slint";
+import { Tag, Button, StatusLabel, LineEdit, AreaEdit } from "g_widgets.slint";
+
+// 知識と根拠の作り直し(doc 60、契約は doc 61)の画面。寸法と配色は ref/mockups/knowledge-redesign/index.html の
+// とおり。値はすべてサーバー(inocode/kb/*)から来る。ID と列挙値は画面に出さない。
+// Rust: src/tabs/kb.rs
+
+// 一覧の 1 行
+export struct KbRow {
+    title: string,
+    sub: string,
+    // 右端の語("緩和中"、"止める" など)と、その印: 0 = 印なし、1 = 未確認(黄)、2 = 確認済み(緑)
+    end: string,
+    end-tone: int,
+    selected: bool,
+}
+
+// 詳細の「条件 / 原文」のような組
+export struct KbKv {
+    k: string,
+    v: string,
+}
+
+// 緩和の履歴の 1 件
+export struct KbHist {
+    text: string,
+    meta: string,
+    can-revoke: bool,
+}
+
+// 引用ブロック
+export struct KbQuote {
+    text: string,
+    source: string,
+    // 原資料の本文と一字一句一致するか
+    broken: bool,
+}
+
+// 詳細の下の操作
+export struct KbAct {
+    id: string,
+    label: string,
+    primary: bool,
+}
+
+// 概要の区画(見出しと行)
+export struct KbSection {
+    heading: string,
+    rows: [KbRow],
+    chips: [string],
+}
+
+// チェックリストの 1 項目
+export struct KbCheck {
+    text: string,
+    detail: string,
+    done: bool,
+    // 本人がチェックを付け外しできるか(機械が付ける項目は false)
+    can-toggle: bool,
+}
+
+export global KbState {
+    // 0 = 概要、1 = 禁止事項、2 = 失敗の記録、3 = 共通知識(知識タブ)。10 = ページ、11 = 引用(根拠タブ)。
+    in-out property <int> sub: 0;
+    // 各タブの副タブの選び(知識タブ: 0..4 = 旧一覧、根拠タブ: 10, 11, 12.. = 旧画面)
+    in-out property <int> know-sub: 0;
+    in-out property <int> evid-sub: 10;
+    in property <[string]> know-subs: ["概要", "禁止事項", "失敗の記録", "共通知識", "旧一覧"];
+    in property <[string]> evid-subs: ["ページ", "引用", "原資料", "主張", "マインドマップ", "文書の検証"];
+    // side panel の副タブの帯の並び(表示の順に、タブの番号)
+    in property <[int]> panel-order: [0, 4, 1, 2, 3];
+    in-out property <string> query;
+    in property <string> search-hint: "知識を検索";
+    in property <bool> can-new: false;
+    in property <string> new-label: "新規";
+    in property <[string]> tags;
+    in property <string> tag;
+    in property <[KbRow]> rows;
+    // 一覧の下の別の区画(旧規則の移行など)
+    in property <string> extra-heading;
+    in property <[KbRow]> extra-rows;
+    in property <string> note;
+    // 詳細
+    in property <bool> has-detail: false;
+    in property <string> d-title;
+    in property <string> d-meta;
+    in property <string> d-badge;
+    in property <int> d-badge-tone: 0;
+    in property <[string]> d-tags;
+    in property <[string]> d-body;
+    in property <[KbKv]> d-kv;
+    in property <[KbQuote]> d-quotes;
+    in property <string> d-hist-heading;
+    in property <[KbHist]> d-hist;
+    in property <[string]> d-links;
+    in property <string> d-links-heading;
+    in property <[string]> d-backlinks;
+    in property <[KbAct]> d-acts;
+    // 概要
+    in property <string> o-title;
+    in property <[string]> o-body;
+    in property <[KbSection]> o-sections;
+    // 編集: 0 = なし、1 = 概要、2 = ページ、3 = 禁止事項
+    in-out property <int> edit-kind: 0;
+    in-out property <bool> edit-new: false;
+    in-out property <string> edit-title;
+    in-out property <string> edit-body;
+    in-out property <string> edit-reason;
+    in-out property <int> edit-strength: 0;
+    // チェックリスト(右の side panel)
+    in property <[string]> roles;
+    in property <string> role;
+    in property <[KbCheck]> checks;
+    in-out property <string> check-add;
+
+    callback sub-changed(int);
+    callback search(string);
+    callback pick-tag(string);
+    callback pick(int);
+    callback pick-extra(int);
+    callback extra-act(int, string);
+    callback pick-section-row(int, int);
+    callback pick-chip(string);
+    callback pick-link(string);
+    callback act(string);
+    callback revoke(int);
+    callback create;
+    callback save;
+    callback cancel;
+    callback pick-role(string);
+    callback toggle-check(int);
+    callback add-check;
+    callback remove-check(int);
+    callback open-checklist;
+}
+
+component Label inherits Rectangle {
+    in property <string> text;
+    in property <int> tone;
+    height: 18px;
+    width: t.preferred-width + 12px;
+    border-radius: 4px;
+    background: root.tone == 2 ? #2e9d5b33 : #d9a43a33;
+    t := Text {
+        text: root.text;
+        font-size: 11px;
+        color: root.tone == 2 ? #3fb06d : Theme.warning;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component RowItem inherits Rectangle {
+    in property <KbRow> item;
+    callback clicked;
+    height: max(36px, 16px + tt.preferred-height + (root.item.sub == "" ? 0px : sub.preferred-height));
+    border-radius: Theme.radius-row;
+    background: root.item.selected ? Theme.selected : ta.has-hover ? Theme.hover : transparent;
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding: 8px;
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 8px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            tt := Text { text: root.item.title; color: Theme.fg; font-size: 13px; overflow: elide; }
+            sub := Text { text: root.item.sub; color: Theme.fg-secondary; font-size: 12px; overflow: elide; visible: root.item.sub != ""; height: root.item.sub == "" ? 0px : self.preferred-height; }
+        }
+        VerticalLayout {
+            alignment: start;
+            if root.item.end != "" && root.item.end-tone != 0: Label { text: root.item.end; tone: root.item.end-tone; }
+            if root.item.end != "" && root.item.end-tone == 0: Text { text: root.item.end; color: Theme.fg-tertiary; font-size: 12px; }
+        }
+    }
+}
+
+component Search inherits Rectangle {
+    height: 30px;
+    border-radius: 6px;
+    background: Theme.selected;
+    horizontal-stretch: 1;
+    si := TextInput {
+        selection-foreground-color: Theme.fg;
+        selection-background-color: #4d8ff566;
+        x: 10px;
+        width: parent.width - 20px;
+        height: parent.height;
+        vertical-alignment: center;
+        font-size: 13px;
+        color: Theme.fg;
+        single-line: true;
+        text <=> KbState.query;
+        edited => { KbState.search(self.text); }
+    }
+    if si.text == "" && si.preedit-text == "": Text {
+        x: 10px;
+        height: parent.height;
+        text: KbState.search-hint;
+        color: Theme.fg-tertiary;
+        font-size: 13px;
+        vertical-alignment: center;
+    }
+    TouchArea { mouse-cursor: MouseCursor.text; clicked => { si.focus(); } }
+}
+
+component Heading2 inherits Text {
+    color: Theme.fg;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+component Para inherits Text {
+    color: Theme.fg;
+    font-size: 13px;
+    wrap: word-wrap;
+}
+
+// 本文の中の [リンク] と引用など(詳細の中身)
+component Detail inherits Flickable {
+    content-height: col.preferred-height + 60px;
+    col := VerticalLayout {
+        x: 24px;
+        y: 20px;
+        width: parent.width - 48px;
+        spacing: 6px;
+        alignment: start;
+        Text {
+            text: KbState.d-title;
+            color: Theme.fg;
+            font-size: 22px;
+            font-family: Theme.font-serif;
+            font-weight: 500;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            for t in KbState.d-tags: Text { text: "#" + t; color: Theme.accent; font-size: 12px; vertical-alignment: center; }
+            if KbState.d-meta != "": Text { text: KbState.d-meta; color: Theme.fg-tertiary; font-size: 12px; vertical-alignment: center; }
+            if KbState.d-badge != "": Label { text: KbState.d-badge; tone: KbState.d-badge-tone; }
+        }
+        Rectangle { height: 6px; }
+        for p in KbState.d-body: Para { text: p; }
+        for kv in KbState.d-kv: HorizontalLayout {
+            spacing: 12px;
+            Text { width: 56px; text: kv.k; color: Theme.fg-tertiary; font-size: 13px; vertical-alignment: top; }
+            Text { text: kv.v; color: Theme.fg; font-size: 13px; wrap: word-wrap; horizontal-stretch: 1; }
+        }
+        for q in KbState.d-quotes: Rectangle {
+            height: qc.preferred-height + 4px;
+            Rectangle { x: 0px; width: 2px; background: q.broken ? Theme.danger : Theme.fg-tertiary; }
+            qc := VerticalLayout {
+                x: 14px;
+                y: 2px;
+                width: parent.width - 14px;
+                spacing: 2px;
+                Text { text: q.text; color: Theme.fg; font-size: 13px; wrap: word-wrap; }
+                Text { text: q.source; color: q.broken ? Theme.danger : Theme.fg-tertiary; font-size: 12px; wrap: word-wrap; }
+            }
+        }
+        if KbState.d-hist.length > 0: Heading2 { text: KbState.d-hist-heading; }
+        for h[i] in KbState.d-hist: Rectangle {
+            height: hc.preferred-height;
+            border-radius: Theme.radius-row;
+            background: Theme.selected;
+            hc := HorizontalLayout {
+                padding: 10px;
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 12px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    Text { text: h.text; color: Theme.fg; font-size: 13px; wrap: word-wrap; }
+                    Text { text: h.meta; color: Theme.fg-tertiary; font-size: 12px; wrap: word-wrap; }
+                }
+                if h.can-revoke: VerticalLayout {
+                    alignment: center;
+                    Button { label: "取り消す"; clicked => { KbState.revoke(i); } }
+                }
+            }
+        }
+        if KbState.d-links.length > 0: Heading2 { text: KbState.d-links-heading; }
+        if KbState.d-links.length > 0: HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            for l in KbState.d-links: Tag { label: l; clicked => { KbState.pick-link(l); } }
+        }
+        if KbState.d-backlinks.length > 0: Heading2 { text: "このページを参照しているページ"; }
+        if KbState.d-backlinks.length > 0: HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            for l in KbState.d-backlinks: Tag { label: l; clicked => { KbState.pick-link(l); } }
+        }
+        Rectangle { height: 8px; }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            for a in KbState.d-acts: Button { label: a.label; primary: a.primary; clicked => { KbState.act(a.id); } }
+        }
+    }
+}
+
+// 編集の入力(概要・ページ・禁止事項)
+component Editor inherits Flickable {
+    content-height: ec.preferred-height + 40px;
+    ec := VerticalLayout {
+        x: 24px;
+        y: 20px;
+        width: parent.width - 48px;
+        spacing: 8px;
+        alignment: start;
+        if KbState.edit-kind != 1: LineEdit {
+            text <=> KbState.edit-title;
+        }
+        if KbState.edit-kind == 3: Heading2 { text: "理由"; }
+        if KbState.edit-kind == 3: AreaEdit { text <=> KbState.edit-reason; lines-height: 80px; }
+        if KbState.edit-kind == 3: HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            Tag { label: "止める"; selected: KbState.edit-strength == 0; clicked => { KbState.edit-strength = 0; } }
+            Tag { label: "警告"; selected: KbState.edit-strength == 1; clicked => { KbState.edit-strength = 1; } }
+        }
+        if KbState.edit-kind != 3: AreaEdit { text <=> KbState.edit-body; lines-height: 320px; }
+        if KbState.note != "": Text { text: KbState.note; color: Theme.danger; font-size: 12px; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Button { label: "保存"; primary: true; clicked => { KbState.save(); } }
+            Button { label: "やめる"; clicked => { KbState.cancel(); } }
+        }
+    }
+}
+
+// 一覧 + 詳細(禁止事項・失敗の記録・共通知識・ページ・引用)
+component Split inherits Rectangle {
+    HorizontalLayout {
+        Rectangle {
+          width: min(400px, max(240px, root.width * 0.4));
+          VerticalLayout {
+            VerticalLayout {
+                padding: 10px;
+                padding-left: 12px;
+                padding-right: 12px;
+                padding-bottom: 6px;
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Search { }
+                    if KbState.can-new: Button { label: KbState.new-label; clicked => { KbState.create(); } }
+                }
+                if KbState.tags.length > 0: Flickable {
+                    height: 24px;
+                    content-width: tg.preferred-width;
+                    tg := HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        for t in KbState.tags: Tag { label: t; selected: KbState.tag == t; clicked => { KbState.pick-tag(t); } }
+                    }
+                }
+            }
+            Flickable {
+                vertical-stretch: 1;
+                content-height: rl.preferred-height + 16px;
+                rl := VerticalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    padding-top: 4px;
+                    spacing: 0px;
+                    alignment: start;
+                    for r[i] in KbState.rows: RowItem { item: r; clicked => { KbState.pick(i); } }
+                    if KbState.extra-rows.length > 0: Rectangle { height: 14px; }
+                    if KbState.extra-rows.length > 0: Heading2 { text: KbState.extra-heading; }
+                    for r[i] in KbState.extra-rows: Rectangle {
+                        height: xr.preferred-height;
+                        xr := VerticalLayout {
+                            RowItem { item: r; clicked => { KbState.pick-extra(i); } }
+                            if r.selected: HorizontalLayout {
+                                padding-left: 10px;
+                                padding-bottom: 6px;
+                                spacing: 6px;
+                                alignment: start;
+                                Button { label: "禁止事項にする"; clicked => { KbState.extra-act(i, "prohibition"); } }
+                                Button { label: "チェックリストにする"; clicked => { KbState.extra-act(i, "checklist"); } }
+                                Button { label: "使わない"; clicked => { KbState.extra-act(i, "skip"); } }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        }
+        Rectangle { width: 1px; background: Theme.border; }
+        Rectangle {
+            horizontal-stretch: 1;
+            if KbState.edit-kind != 0: Editor { }
+            if KbState.edit-kind == 0 && KbState.has-detail: Detail { }
+        }
+    }
+}
+
+// 概要(1 枚の読み物 + 計算で作る区画)
+component Overview inherits Flickable {
+    content-height: oc.preferred-height + 80px;
+    oc := VerticalLayout {
+        x: max(28px, (parent.width - 720px) / 2);
+        y: 24px;
+        width: min(720px, parent.width - 56px);
+        spacing: 6px;
+        alignment: start;
+        if KbState.edit-kind == 1: AreaEdit { text <=> KbState.edit-body; lines-height: 280px; }
+        if KbState.edit-kind == 1: HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Button { label: "保存"; primary: true; clicked => { KbState.save(); } }
+            Button { label: "やめる"; clicked => { KbState.cancel(); } }
+        }
+        if KbState.edit-kind != 1: Text {
+            text: KbState.o-title;
+            color: Theme.fg;
+            font-size: 22px;
+            font-family: Theme.font-serif;
+            font-weight: 500;
+            wrap: word-wrap;
+        }
+        if KbState.edit-kind != 1: Rectangle { height: 4px; }
+        if KbState.edit-kind != 1: VerticalLayout {
+            spacing: 6px;
+            for p in KbState.o-body: Para { text: p; }
+        }
+        if KbState.edit-kind != 1: HorizontalLayout {
+            alignment: start;
+            Button { label: "編集"; clicked => { KbState.act("overview-edit"); } }
+        }
+        if KbState.note != "" && KbState.edit-kind == 1: Text { text: KbState.note; color: Theme.danger; font-size: 12px; wrap: word-wrap; }
+        for s[si] in KbState.o-sections: VerticalLayout {
+            spacing: 2px;
+            Rectangle { height: 14px; }
+            Heading2 { text: s.heading; }
+            if s.chips.length > 0: HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                for c in s.chips: Tag { label: c; clicked => { KbState.pick-chip(c); } }
+            }
+            for r[ri] in s.rows: RowItem { item: r; clicked => { KbState.pick-section-row(si, ri); } }
+        }
+    }
+}
+
+// 知識タブの副タブの帯と、その中身。旧一覧は、既存の画面(knowledge.slint)を、呼び出し側が重ねる。
+export component KbStrip inherits Rectangle {
+    in property <[string]> items;
+    in property <int> current;
+    in property <string> note;
+    callback picked(int);
+    height: 45px;
+    HorizontalLayout {
+        padding: 10px;
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 6px;
+        alignment: start;
+        for t[i] in root.items: Tag { label: t; selected: root.current == i; clicked => { root.picked(i); } }
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+}
+
+export component KbBody inherits Rectangle {
+    background: Theme.surface;
+    if KbState.sub == 0: Overview { }
+    if KbState.sub != 0: Split { }
+}
+
+// 右の side panel のチェックリスト
+export component ChecklistPanel inherits Rectangle {
+    Flickable {
+        content-height: cc.preferred-height + 24px;
+        cc := VerticalLayout {
+            x: 12px;
+            y: 8px;
+            width: parent.width - 24px;
+            spacing: 0px;
+            alignment: start;
+            if KbState.roles.length > 0: Flickable {
+                height: 32px;
+                content-width: rc.preferred-width;
+                rc := HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    padding-top: 4px;
+                    padding-bottom: 4px;
+                    for r in KbState.roles: Tag { label: r; selected: KbState.role == r; clicked => { KbState.pick-role(r); } }
+                }
+            }
+            for c[i] in KbState.checks: Rectangle {
+                height: cr.preferred-height + 10px;
+                cr := HorizontalLayout {
+                    y: 5px;
+                    spacing: 8px;
+                    Rectangle {
+                        width: 14px;
+                        height: 14px;
+                        y: 2px;
+                        border-radius: 4px;
+                        border-width: 1.5px;
+                        border-color: c.done ? #3fb06d : Theme.fg-tertiary;
+                        background: c.done ? #3fb06d : transparent;
+                        Text { text: c.done ? "✓" : ""; color: white; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                        TouchArea { enabled: c.can-toggle; mouse-cursor: c.can-toggle ? MouseCursor.pointer : MouseCursor.default; clicked => { KbState.toggle-check(i); } }
+                    }
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        Text { text: c.text; color: c.done ? Theme.fg-secondary : Theme.fg; font-size: 12px; wrap: word-wrap; }
+                        if c.detail != "": Text { text: c.detail; color: Theme.fg-secondary; font-size: 11px; wrap: word-wrap; }
+                    }
+                    Text { text: c.done ? "済" : "未"; color: Theme.fg-tertiary; font-size: 11px; vertical-alignment: top; }
+                    Rectangle {
+                        width: 16px;
+                        Text { text: "×"; color: Theme.fg-tertiary; font-size: 12px; horizontal-alignment: center; vertical-alignment: top; }
+                        TouchArea { mouse-cursor: pointer; clicked => { KbState.remove-check(i); } }
+                    }
+                }
+            }
+            if KbState.role != "": HorizontalLayout {
+                padding-top: 8px;
+                spacing: 6px;
+                LineEdit { text <=> KbState.check-add; horizontal-stretch: 1; edited(t) => { } }
+                Button { label: "追加"; clicked => { KbState.add-check(); } }
+            }
+        }
+    }
+}

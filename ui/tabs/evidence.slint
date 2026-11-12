@@ -1,4 +1,5 @@
 import { Theme } from "../theme.slint";
+import { KbState, KbBody } from "kb.slint";
 import { Tag, Button, StatusLabel, AreaEdit, LineEdit } from "g_widgets.slint";
 
 // 根拠タブ。このファイルと src/tabs/evidence.rs だけを編集して実装する。
@@ -597,10 +598,15 @@ export component EvidenceTab inherits Rectangle {
             padding: 10px;
             padding-left: 16px;
             spacing: 6px;
-            for t[i] in EvidenceState.tabs: Tag {
+            for t[i] in KbState.evid-subs: Tag {
                 label: t;
-                selected: EvidenceState.tab == i;
-                clicked => { EvidenceState.tab = i; EvidenceState.tab-changed(i); }
+                selected: KbState.evid-sub == 10 + i;
+                clicked => {
+                    KbState.evid-sub = 10 + i;
+                    // 原資料・主張・マインドマップ・文書の検証は、既存の画面
+                    if (i >= 2) { EvidenceState.tab = i - 2; EvidenceState.tab-changed(i - 2); }
+                    KbState.sub-changed(10 + i);
+                }
             }
             if EvidenceState.note != "": Text {
                 text: "  " + EvidenceState.note;
@@ -613,10 +619,11 @@ export component EvidenceTab inherits Rectangle {
         Rectangle { height: 1px; background: Theme.border; }
         Rectangle {
             vertical-stretch: 1;
-            if EvidenceState.tab == 0: SourcesView { }
-            if EvidenceState.tab == 1: ClaimsView { }
-            if EvidenceState.tab == 2: MapView { }
-            if EvidenceState.tab == 3: VerifyView { }
+            if KbState.evid-sub < 12: KbBody { }
+            if KbState.evid-sub >= 12 && EvidenceState.tab == 0: SourcesView { }
+            if KbState.evid-sub >= 12 && EvidenceState.tab == 1: ClaimsView { }
+            if KbState.evid-sub >= 12 && EvidenceState.tab == 2: MapView { }
+            if KbState.evid-sub >= 12 && EvidenceState.tab == 3: VerifyView { }
         }
     }
 }

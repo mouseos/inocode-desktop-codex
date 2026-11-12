@@ -2,6 +2,7 @@ import { Theme } from "../theme.slint";
 import { Icon, Glyph } from "../icons.slint";
 import { Tag, Button, StatusLabel, LineEdit, AreaEdit } from "g_widgets.slint";
 import { LogRow, LogList } from "log_rows.slint";
+import { KbState, KbStrip, KbBody } from "kb.slint";
 
 // 知識タブ。このファイルと src/tabs/knowledge.rs だけを編集して実装する。
 // Rust 側から触る状態とコールバックは KnowledgeState にまとめる
@@ -449,7 +450,7 @@ component EditForm inherits Rectangle {
     }
 }
 
-export component KnowledgeTab inherits Rectangle {
+component OldKnowledge inherits Rectangle {
     background: Theme.surface;
     HorizontalLayout {
         ListPane { width: 400px; }
@@ -489,6 +490,23 @@ export component KnowledgeTab inherits Rectangle {
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
+        }
+    }
+}
+
+// 知識タブ: 概要 / 禁止事項 / 失敗の記録 / 共通知識(作り直した画面)と、旧一覧(既存の画面。発動の記録・引き継ぎもここ)
+export component KnowledgeTab inherits Rectangle {
+    background: Theme.surface;
+    VerticalLayout {
+        KbStrip {
+            items: KbState.know-subs;
+            current: KbState.know-sub;
+            picked(i) => { KbState.know-sub = i; KbState.sub-changed(i); }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            if KbState.know-sub < 4: KbBody { }
+            if KbState.know-sub == 4: OldKnowledge { }
         }
     }
 }

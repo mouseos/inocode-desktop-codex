@@ -1,0 +1,24 @@
+{
+  "method": "inocode/kb/checklist/write",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "role": "実装",
+    "items": [
+      {
+        "id": null,
+        "text": "変更の後にテストを走らせる",
+        "when": "afterChange",
+        "check": "machine",
+        "origin": null
+      }
+    ]
+  },
+  "response": {
+    "items": [
+      {
+        "id": "chk-0001"
+      }
+    ]
+  },
+  "note": "担当ごとに全項目を置き換える(id なしは新規)。書けるのはユーザー(画面)。モデルによる項目の追加の提案は、この段には入れない(後の段)。"
+}

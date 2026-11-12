@@ -1,0 +1,12 @@
+{
+  "method": "inocode/kb/overview/read",
+  "request": {
+    "cwd": "D:\\work\\demo-project"
+  },
+  "response": {
+    "text": "# demo-project\n目的: …\n方針: …\n[API の契約] を参照。 #方針",
+    "rev": "r7",
+    "updatedAt": "2026-11-12T03:00:00Z"
+  },
+  "note": "概要ページ(人が書く 1 枚)。無ければ text は空文字、rev は \"r0\"。"
+}

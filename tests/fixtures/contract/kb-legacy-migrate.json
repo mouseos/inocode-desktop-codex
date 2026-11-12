@@ -1,0 +1,15 @@
+{
+  "method": "inocode/kb/legacy/migrate",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "ruleId": "rule-0005",
+    "to": "prohibition",
+    "ledgerRef": null,
+    "quote": null
+  },
+  "response": {
+    "id": "proh-0002",
+    "origin": "legacy"
+  },
+  "note": "to: prohibition|checklist|skip。1 件ずつ。旧規則は消さず・状態も変えない(移行済みの印を別ファイルに持つ)。prohibition に移した分は origin.kind=legacy(ユーザーが画面で確認するまで内部で未確認)。ledgerRef と quote を付けると origin.kind=ledger にできる。"
+}

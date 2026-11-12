@@ -1,0 +1,22 @@
+{
+  "method": "inocode/kb/ledger/list",
+  "request": {
+    "threadId": "thr_01HZX",
+    "query": null,
+    "limit": 50,
+    "cursor": null
+  },
+  "response": {
+    "entries": [
+      {
+        "threadId": "thr_01HZX",
+        "seq": 12,
+        "tsMs": 1762826900000,
+        "text": "プロセスは名前で止めないで",
+        "truncated": false
+      }
+    ],
+    "nextCursor": null
+  },
+  "note": "ユーザー本人が打った入力だけ(Stop フックの合成ターン・通知・伝言・子の入力は入らない)。追記専用(書き込む RPC は無い)。"
+}

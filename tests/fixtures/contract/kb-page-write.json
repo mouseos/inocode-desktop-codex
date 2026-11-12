@@ -1,0 +1,25 @@
+{
+  "method": "inocode/kb/page/write",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "title": "SQLite のロック",
+    "body": "…",
+    "baseRev": "r2",
+    "by": "user",
+    "confirm": true
+  },
+  "response": {
+    "rev": "r3",
+    "tags": [
+      "調査"
+    ],
+    "links": [
+      {
+        "title": "WAL の設定",
+        "exists": false
+      }
+    ],
+    "quoteErrors": []
+  },
+  "note": "baseRev 省略は新規作成(同じ題名が既にあれば -32010)。版が違えば -32010。quoteErrors は、原資料に一字一句含まれない引用(あれば保存せず、引用ごとの理由を返す)。by=user のとき confirm=true で確認済み。by=model は常に未確認の下書き。"
+}

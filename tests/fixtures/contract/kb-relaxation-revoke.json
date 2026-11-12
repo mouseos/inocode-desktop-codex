@@ -1,0 +1,10 @@
+{
+  "method": "inocode/kb/relaxation/revoke",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "prohibitionId": "proh-0001",
+    "relaxationId": "rel-0001"
+  },
+  "response": {},
+  "note": "revokedAt を付ける(消さない)。元の禁止はそのまま。"
+}

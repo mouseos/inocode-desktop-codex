@@ -1,0 +1,16 @@
+{
+  "method": "inocode/kb/tag/list",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "prefix": "調"
+  },
+  "response": {
+    "tags": [
+      {
+        "tag": "調査",
+        "count": 4
+      }
+    ]
+  },
+  "note": "入力中の候補用。完全一致のタグ(正規化は全角半角・大文字小文字)。"
+}

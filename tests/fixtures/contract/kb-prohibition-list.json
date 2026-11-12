@@ -1,0 +1,56 @@
+{
+  "method": "inocode/kb/prohibition/list",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "status": "active"
+  },
+  "response": {
+    "prohibitions": [
+      {
+        "id": "proh-0001",
+        "title": "プロセスを名前で止めない",
+        "reason": "ユーザーが使っているアプリを落とす",
+        "strength": "block",
+        "match": {
+          "commands": [
+            "re:(?i)\\btaskkill\\b.*\\s/IM\\b"
+          ]
+        },
+        "role": null,
+        "status": "active",
+        "expires": null,
+        "irreversible": true,
+        "origin": {
+          "kind": "ledger",
+          "ledgerRef": {
+            "threadId": "thr_01HZX",
+            "seq": 12
+          },
+          "quote": "プロセスは名前で止めないで"
+        },
+        "relaxations": [
+          {
+            "id": "rel-0001",
+            "ledgerRef": {
+              "threadId": "thr_01HZX",
+              "seq": 30
+            },
+            "quote": "このアプリだけは名前で止めていい",
+            "effect": "allowOnly",
+            "allow": {
+              "commands": [
+                "taskkill /IM myapp.exe"
+              ]
+            },
+            "scope": "request",
+            "by": "user-text",
+            "at": "2026-11-12T03:10:00Z",
+            "revokedAt": null,
+            "active": true
+          }
+        ]
+      }
+    ]
+  },
+  "note": "origin.kind: ledger(原文参照つき)| ui(画面でユーザーが作成)| legacy(旧規則の移行分。ユーザーが確認するまで内部で未確認)。status: active|retracted。relaxations は履歴(取り消し済みも出る)。active は、いま効いているか(scope と revokedAt で計算)。"
+}

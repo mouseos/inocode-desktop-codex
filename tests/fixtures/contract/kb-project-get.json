@@ -1,0 +1,12 @@
+{
+  "method": "inocode/kb/project/get",
+  "request": {
+    "cwd": "D:\\work\\demo-project"
+  },
+  "response": {
+    "name": "demo-project",
+    "remote": "github.com/example/demo-project",
+    "ready": true
+  },
+  "note": "プロジェクトの名前(フォルダ名。.inocode/project.json の name があればそれ)。ID は画面に出さない(ホストが .inocode/project.json に 1 回だけ作る)。ready=false は project.json が読めない(書き込み系は黙って何もしない)。"
+}

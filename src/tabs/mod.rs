@@ -12,6 +12,7 @@ use std::rc::Rc;
 mod accounts;
 mod evidence;
 mod knowledge;
+pub(crate) mod kb;
 mod settings;
 mod stats;
 mod goal;
@@ -59,6 +60,7 @@ pub fn install(app: &AppWindow, host: &Host) {
         (tab.install)(app, host);
     }
     stats::install(app, host);
+    kb::install(app, host);
     goal::install(app, host);
     crate::side_panel::install(app, host);
     let weak = app.as_weak();
@@ -69,6 +71,12 @@ pub fn install(app: &AppWindow, host: &Host) {
         }
         if let (Some(app), Some(tab)) = (weak.upgrade(), TABS.get((i - 1) as usize)) {
             (tab.opened)(&app, &host);
+            // 知識タブと根拠タブは、作り直した画面(inocode/kb/*)も開く
+            if i == 1 || i == 2 {
+                let st = app.global::<crate::KbState>();
+                st.set_sub(if i == 1 { st.get_know_sub().min(3) } else { st.get_evid_sub().clamp(10, 11) });
+                kb::opened(&app, &host);
+            }
         }
     });
 }
@@ -79,6 +87,7 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
         (tab.event)(app, host, event);
     }
     stats::event(app, host, event);
+    kb::event(app, host, event);
     goal::event(app, host, event);
     if let Event::Notify { method, params } = event {
         crate::settings_mcp::on_notify(app, method, params);

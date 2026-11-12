@@ -1,0 +1,20 @@
+{
+  "method": "inocode/kb/legacy/failureCases",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "limit": 50,
+    "cursor": null
+  },
+  "response": {
+    "cases": [
+      {
+        "id": "failure_case-0001",
+        "title": "失敗: …",
+        "symptom": "…",
+        "candidate": true
+      }
+    ],
+    "nextCursor": null
+  },
+  "note": "旧失敗事例の読み取り専用の一覧。advisor の自動記録は『候補』に格下げ済み(candidate=true。プロンプトへの注入はしない)。"
+}

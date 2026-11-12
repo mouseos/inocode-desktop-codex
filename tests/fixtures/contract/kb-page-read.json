@@ -1,0 +1,47 @@
+{
+  "method": "inocode/kb/page/read",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "title": "SQLite のロック"
+  },
+  "response": {
+    "title": "SQLite のロック",
+    "body": "#調査\n[WAL の設定] を見る。\n> quote:src_0001: database is locked\n",
+    "tags": [
+      "調査"
+    ],
+    "links": [
+      {
+        "title": "WAL の設定",
+        "exists": false
+      }
+    ],
+    "backlinks": [
+      "概要"
+    ],
+    "quotes": [
+      {
+        "sourceRef": "src_0001",
+        "sourceTitle": "SQLite docs",
+        "sourceUrl": "https://sqlite.org/wal.html",
+        "text": "database is locked",
+        "matches": true
+      }
+    ],
+    "revs": [
+      {
+        "rev": "r2",
+        "by": "model",
+        "at": "2026-11-12T03:00:00Z"
+      },
+      {
+        "rev": "r1",
+        "by": "user",
+        "at": "2026-11-11T12:00:00Z"
+      }
+    ],
+    "rev": "r2",
+    "confirmed": false
+  },
+  "note": "引用ブロックは本文中の `> quote:<原資料の参照>: <原文>` 行。matches は、いま原資料の本文に一字一句含まれるか(ホストが検査)。"
+}

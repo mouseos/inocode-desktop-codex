@@ -22,6 +22,7 @@ pub fn install(app: &AppWindow, host: &Host) {
         match tab {
             1 => terminal::opened(&app, &host),
             2 => files::opened(&app, &host),
+            4 => crate::tabs::kb::checklist_opened(&app, &host),
             _ => {}
         }
     });

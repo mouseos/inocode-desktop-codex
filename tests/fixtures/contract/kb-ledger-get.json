@@ -1,0 +1,17 @@
+{
+  "method": "inocode/kb/ledger/get",
+  "request": {
+    "threadId": "thr_01HZX",
+    "seq": 12
+  },
+  "response": {
+    "entry": {
+      "threadId": "thr_01HZX",
+      "seq": 12,
+      "tsMs": 1762826900000,
+      "text": "プロセスは名前で止めないで"
+    },
+    "laterEntries": 2
+  },
+  "note": "原文を要約せず返す。laterEntries は、その後に同じスレッドで増えた発言の数(訂正・撤回の確認用)。"
+}

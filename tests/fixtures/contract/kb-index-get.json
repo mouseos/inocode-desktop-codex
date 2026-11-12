@@ -1,0 +1,49 @@
+{
+  "method": "inocode/kb/index/get",
+  "request": {
+    "cwd": "D:\\work\\demo-project"
+  },
+  "response": {
+    "tags": [
+      {
+        "tag": "決定",
+        "count": 3
+      },
+      {
+        "tag": "方針",
+        "count": 2
+      }
+    ],
+    "unresolvedLinks": [
+      {
+        "title": "API の契約",
+        "fromPages": [
+          "概要"
+        ]
+      }
+    ],
+    "activeProhibitions": [
+      {
+        "id": "proh-0001",
+        "title": "プロセスを名前で止めない",
+        "strength": "block",
+        "relaxed": false
+      }
+    ],
+    "openChecklist": [
+      {
+        "role": "実装",
+        "open": 2,
+        "total": 5
+      }
+    ],
+    "pageCount": 12,
+    "commonRefCount": 0,
+    "legacy": {
+      "rules": 14,
+      "failureCases": 37,
+      "evidenceClaims": 547
+    }
+  },
+  "note": "計算で作る一覧(保存しない)。開くたびに計算してよい。legacy は旧データの件数(読み取り専用)。"
+}

@@ -1,0 +1,25 @@
+{
+  "method": "inocode/kb/relaxation/add",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "prohibitionId": "proh-0001",
+    "ledgerRef": {
+      "threadId": "thr_01HZX",
+      "seq": 30
+    },
+    "quote": "このアプリだけは名前で止めていい",
+    "effect": "allowOnly",
+    "allow": {
+      "commands": [
+        "taskkill /IM myapp.exe"
+      ]
+    },
+    "scope": "request",
+    "until": null,
+    "by": "user-text"
+  },
+  "response": {
+    "id": "rel-0001"
+  },
+  "note": "effect: allowOnly(この条件の行為だけ許す。allow に match と同じ形)| warnOnly(警告にする)| disable(無効にする)。scope: request(この依頼の間。既定)| session(このセッションの間)| until(until の日時まで)| always(取り消すまで)。by: user-text(原文参照つき)| user-ui(画面)。ledgerRef は by=user-text のとき必須で、ユーザー本人の発言であること・quote の一致をホストが検査する。"
+}

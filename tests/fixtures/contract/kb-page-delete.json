@@ -1,0 +1,11 @@
+{
+  "method": "inocode/kb/page/delete",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "title": "SQLite のロック"
+  },
+  "response": {
+    "movedTo": "trash"
+  },
+  "note": "削除でなく、.inocode/kb/trash/ へ移す(復元できる)。"
+}

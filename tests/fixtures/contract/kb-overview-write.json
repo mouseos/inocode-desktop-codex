@@ -1,0 +1,12 @@
+{
+  "method": "inocode/kb/overview/write",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "text": "# demo-project\n…",
+    "baseRev": "r7"
+  },
+  "response": {
+    "rev": "r8"
+  },
+  "note": "baseRev が現在の版と違えば JSON-RPC エラー -32010(conflict)。error.data.currentRev に現在の版。上書きしない(新しい版を読ませる)。"
+}

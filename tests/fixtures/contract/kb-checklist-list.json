@@ -1,0 +1,28 @@
+{
+  "method": "inocode/kb/checklist/list",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "role": "実装"
+  },
+  "response": {
+    "roles": [
+      "リード",
+      "実装",
+      "目視確認"
+    ],
+    "items": [
+      {
+        "id": "chk-0001",
+        "role": "実装",
+        "text": "変更の後にテストを走らせる",
+        "when": "afterChange",
+        "check": "machine",
+        "origin": null,
+        "done": true,
+        "doneBy": "machine",
+        "doneAt": "2026-11-12T03:20:00Z"
+      }
+    ]
+  },
+  "note": "when: beforeStart|afterChange|beforeReport。check: machine(機械の事実で自動「済」)| user(本人が確認)| self(モデルの自己申告)。完了を止める関門は無い(表示と注入だけ)。"
+}

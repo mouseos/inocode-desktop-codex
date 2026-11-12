@@ -1,0 +1,27 @@
+{
+  "method": "inocode/kb/page/list",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "query": "ロック",
+    "tag": null,
+    "limit": 50,
+    "cursor": null
+  },
+  "response": {
+    "pages": [
+      {
+        "title": "SQLite のロック",
+        "tags": [
+          "決定",
+          "調査"
+        ],
+        "by": "model",
+        "confirmed": false,
+        "updatedAt": "2026-11-12T03:00:00Z",
+        "snippet": "WAL モードにすると…"
+      }
+    ],
+    "nextCursor": null
+  },
+  "note": "by は user|model(最後の版を書いた側)。confirmed は人が確認済みか(画面は「確認済み/未確認」の 2 語)。全文検索(題名・本文・タグ)が主、tag は完全一致の絞り。"
+}

@@ -1,0 +1,9 @@
+{
+  "method": "inocode/kb/changed",
+  "request": null,
+  "response": {
+    "cwd": "D:\\work\\demo-project",
+    "area": "prohibition"
+  },
+  "note": "サーバー通知(要求ではない)。area: project|overview|page|prohibition|relaxation|checklist|ledger|legacy。画面は該当の一覧を取り直す。"
+}

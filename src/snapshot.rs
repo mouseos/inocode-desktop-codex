@@ -323,13 +323,28 @@ pub(crate) fn install(app: &AppWindow) {
         });
         extra.push(t);
     }
-    // INOCODE_GUI_EVTAB=<n>: the part of the evidence tab that is open (0 sources, 1 claims, 2 map,
+    // INOCODE_GUI_KBSUB=<n>: the part of the knowledge tab (0 overview, 1 prohibitions, 2 failures, 3 common,
+    // 4 the old list; INOCODE_GUI_TAB=1) or of the evidence tab (10 pages, 11 quotes; INOCODE_GUI_TAB=2) that is open.
+    if let Some(n) = std::env::var("INOCODE_GUI_KBSUB").ok().and_then(|v| v.parse::<i32>().ok()) {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 1), move || {
+            if let Some(app) = weak.upgrade() {
+                let st = app.global::<crate::KbState>();
+                if n >= 10 { st.set_evid_sub(n) } else { st.set_know_sub(n) }
+                st.invoke_sub_changed(n);
+            }
+        });
+        extra.push(t);
+    }
+    // INOCODE_GUI_EVTAB=<n>: the old part of the evidence tab that is open (0 sources, 1 claims, 2 map,
     // 3 verify) and INOCODE_GUI_TAB=2 for the tab itself.
     if let Some(n) = std::env::var("INOCODE_GUI_EVTAB").ok().and_then(|v| v.parse::<i32>().ok()) {
         let weak = app.as_weak();
         let t = slint::Timer::default();
         t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 2), move || {
             if let Some(app) = weak.upgrade() {
+                app.global::<crate::KbState>().set_evid_sub(12 + n);
                 app.global::<EvidenceState>().set_tab(n);
                 app.global::<EvidenceState>().invoke_tab_changed(n);
             }

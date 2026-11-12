@@ -1,0 +1,9 @@
+{
+  "method": "inocode/kb/prohibition/retract",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "id": "proh-0001"
+  },
+  "response": {},
+  "note": "status を retracted にする(消さない)。履歴に残る。"
+}

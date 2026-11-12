@@ -1,0 +1,27 @@
+{
+  "method": "inocode/kb/legacy/rules",
+  "request": {
+    "cwd": "D:\\work\\demo-project"
+  },
+  "response": {
+    "rules": [
+      {
+        "id": "rule-0005",
+        "title": "プロセスを名前で止めない",
+        "reason": "…",
+        "severity": "block",
+        "status": "verified",
+        "source": "ユーザーの指示 2026-11-11",
+        "match": {
+          "commands": [
+            "re:…"
+          ]
+        },
+        "suggested": "prohibition",
+        "migrated": null,
+        "stillGuarding": true
+      }
+    ]
+  },
+  "note": "旧データ(.inocode/knowledge/rule)の読み取り専用の一覧。suggested(私の分類の案。ユーザーが決める): prohibition|checklist|unused。migrated: 移行済みなら {to, id}。stillGuarding: 移行までは旧規則のままガードする(ホストが止める働きは保つ)。"
+}

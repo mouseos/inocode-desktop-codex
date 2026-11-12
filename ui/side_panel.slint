@@ -3,15 +3,17 @@ import { TaskPanel } from "panel.slint";
 import { GitState } from "git_panel.slint";
 import { TerminalView } from "side/terminal.slint";
 import { FilesView } from "side/files.slint";
+import { KbState, ChecklistPanel } from "tabs/kb.slint";
 
 export { TerminalState, TermRun, TermLine, TermTab } from "side/terminal.slint";
 export { FilesState, FileEntry } from "side/files.slint";
 
-// Tabs of the right-hand work area: 0 overview (the former right panel), 1 terminal, 2 files, 3 changes.
+// Tabs of the right-hand work area: 0 overview (the former right panel), 1 terminal, 2 files, 3 changes, 4 checklist
+// (shown second; the strip scrolls sideways when it does not fit).
 // Rust: src/side_panel/mod.rs
 export global SidePanelState {
     in-out property <int> tab: 0;
-    out property <[string]> titles: ["概要", "ターミナル", "ファイル", "変更"];
+    out property <[string]> titles: ["概要", "ターミナル", "ファイル", "変更", "チェックリスト"];
     callback selected(int);
     public function select(i: int) {
         root.tab = i;
@@ -33,30 +35,32 @@ export component SidePanel inherits Rectangle {
     Rectangle { x: 0px; width: 1px; background: Theme.border; }
 
     VerticalLayout {
-        HorizontalLayout {
+        Flickable {
             height: 32px;
-            padding-left: 8px;
-            padding-right: 8px;
-            padding-top: 4px;
-            padding-bottom: 2px;
-            spacing: 2px;
-            for title[i] in SidePanelState.titles: Rectangle {
-                width: label.preferred-width + 20px;
-                border-radius: Theme.radius-row;
-                background: ta.pressed ? Theme.pressed
-                    : SidePanelState.tab == i ? Theme.selected
-                    : ta.has-hover ? Theme.hover : transparent;
-                label := Text {
-                    text: title;
-                    color: SidePanelState.tab == i ? Theme.fg : Theme.fg-secondary;
-                    font-size: 12px;
-                    font-weight: SidePanelState.tab == i ? 600 : 400;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-                ta := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { SidePanelState.select(i); }
+            content-width: strip.preferred-width + 16px;
+            strip := HorizontalLayout {
+                x: 8px;
+                padding-top: 4px;
+                padding-bottom: 2px;
+                spacing: 2px;
+                for tab-id[n] in KbState.panel-order: Rectangle {
+                    width: label.preferred-width + 20px;
+                    border-radius: Theme.radius-row;
+                    background: ta.pressed ? Theme.pressed
+                        : SidePanelState.tab == tab-id ? Theme.selected
+                        : ta.has-hover ? Theme.hover : transparent;
+                    label := Text {
+                        text: SidePanelState.titles[tab-id];
+                        color: SidePanelState.tab == tab-id ? Theme.fg : Theme.fg-secondary;
+                        font-size: 12px;
+                        font-weight: SidePanelState.tab == tab-id ? 600 : 400;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { SidePanelState.select(tab-id); }
+                    }
                 }
             }
         }
@@ -69,6 +73,10 @@ export component SidePanel inherits Rectangle {
                 context-percent: root.context-percent;
                 usage-text: root.usage-text;
                 rate-text: root.rate-text;
+            }
+            if SidePanelState.tab == 4: ChecklistPanel {
+                width: parent.width;
+                height: parent.height;
             }
             if SidePanelState.tab == 1: TerminalView {
                 width: parent.width;

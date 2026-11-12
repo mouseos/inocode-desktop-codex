@@ -1,0 +1,30 @@
+{
+  "method": "inocode/kb/prohibition/write",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "id": null,
+    "title": "プロセスを名前で止めない",
+    "reason": "…",
+    "strength": "block",
+    "match": {
+      "commands": [
+        "re:(?i)\\btaskkill\\b.*\\s/IM\\b"
+      ]
+    },
+    "role": null,
+    "expires": null,
+    "irreversible": true,
+    "origin": {
+      "kind": "ledger",
+      "ledgerRef": {
+        "threadId": "thr_01HZX",
+        "seq": 12
+      },
+      "quote": "プロセスは名前で止めないで"
+    }
+  },
+  "response": {
+    "id": "proh-0001"
+  },
+  "note": "origin.kind=ledger のときは、ledgerRef の発言が台帳に実在し、その発言に quote が一字一句含まれることをホストが検査する(違えば -32602、data.reason に理由)。origin.kind=ui は画面のユーザー操作(参照不要)。id を付けると、その禁止の本文を更新(履歴は残す)。モデルのツールからは、新設も拡大もできない(下書きの提案だけ)。"
+}
