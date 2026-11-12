@@ -298,6 +298,10 @@ const NODE_W: f32 = 210.0;
 const NODE_H: f32 = 58.0;
 const H_GAP: f32 = 70.0;
 const V_GAP: f32 = 18.0;
+/// The map is at most this many columns and rows: a cycle (or a very long chain) must not make the
+/// canvas wider than the renderer can draw (it panics beyond about 32000 physical pixels: keep the map under 12000 logical ones, the screen may scale by 2).
+const MAX_DEPTH: usize = 35;
+const MAX_ROWS: usize = 150;
 const MARGIN: f32 = 24.0;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -310,8 +314,11 @@ struct Placed {
 #[derive(Debug, Clone, PartialEq)]
 struct Layout {
     placed: Vec<Placed>,
-    /// (始点のノード番号, 終点のノード番号, SVG のパス)
+    /// (始点のノード番号, 終点のノード番号, SVG のパス(枠の左上が原点))
     edges: Vec<(usize, usize, String)>,
+    /// 各辺の枠(x, y, 幅, 高さ): 辺ごとの Path はこの大きさだけ取る(キャンバス全体の大きさで 100 本以上を
+    /// 描くと、描画側が大きさを扱えず panic する)
+    boxes: Vec<[f32; 4]>,
     width: f32,
     height: f32,
 }
@@ -328,7 +335,7 @@ fn layout(nodes: &[NodeData], edges: &[EdgeData]) -> Layout {
     for _ in 0..nodes.len() {
         let mut changed = false;
         for &(a, b) in &links {
-            if a != b && layer[b] < layer[a] + 1 && layer[a] < nodes.len() {
+            if a != b && layer[b] < layer[a] + 1 && layer[a] + 1 < MAX_DEPTH {
                 layer[b] = layer[a] + 1;
                 changed = true;
             }
@@ -355,34 +362,52 @@ fn layout(nodes: &[NodeData], edges: &[EdgeData]) -> Layout {
         }
         columns[l] = members;
     }
-    let rows = columns.iter().map(Vec::len).max().unwrap_or(0);
+    let rows = columns.iter().map(Vec::len).max().unwrap_or(0).min(MAX_ROWS);
     let mut placed = vec![Placed { id: String::new(), x: 0.0, y: 0.0 }; nodes.len()];
     for (l, members) in columns.iter().enumerate() {
         for (r, &i) in members.iter().enumerate() {
             placed[i] = Placed {
                 id: nodes[i].id.clone(),
                 x: MARGIN + l as f32 * (NODE_W + H_GAP),
-                y: MARGIN + r as f32 * (NODE_H + V_GAP),
+                y: MARGIN + r.min(MAX_ROWS - 1) as f32 * (NODE_H + V_GAP),
             };
         }
     }
-    let path = |a: usize, b: usize| -> String {
+    let path = |a: usize, b: usize| -> (String, [f32; 4]) {
         let (x1, y1) = (placed[a].x + NODE_W, placed[a].y + NODE_H / 2.0);
         let (x2, y2) = (placed[b].x, placed[b].y + NODE_H / 2.0);
         let dx = ((x2 - x1).abs() / 2.0).max(24.0);
-        // 曲線 + 終点の矢じり
-        format!(
-            "M {x1} {y1} C {} {y1} {} {y2} {x2} {y2} M {x2} {y2} L {} {} M {x2} {y2} L {} {}",
-            x1 + dx,
-            x2 - dx,
-            x2 - 7.0,
-            y2 - 4.0,
-            x2 - 7.0,
-            y2 + 4.0
-        )
+        // the box of every point of the line (the curve stays inside its control points)
+        let xs = [x1, x1 + dx, x2 - dx, x2, x2 - 7.0];
+        let ys = [y1, y2, y2 - 4.0, y2 + 4.0];
+        let (x0, xe) = (xs.iter().cloned().fold(f32::MAX, f32::min) - 2.0, xs.iter().cloned().fold(f32::MIN, f32::max) + 2.0);
+        let (y0, ye) = (ys.iter().cloned().fold(f32::MAX, f32::min) - 2.0, ys.iter().cloned().fold(f32::MIN, f32::max) + 2.0);
+        // 曲線 + 終点の矢じり(枠の左上が原点)
+        let p = format!(
+            "M {} {} C {} {} {} {} {} {} M {} {} L {} {} M {} {} L {} {}",
+            x1 - x0,
+            y1 - y0,
+            x1 + dx - x0,
+            y1 - y0,
+            x2 - dx - x0,
+            y2 - y0,
+            x2 - x0,
+            y2 - y0,
+            x2 - x0,
+            y2 - y0,
+            x2 - 7.0 - x0,
+            y2 - 4.0 - y0,
+            x2 - x0,
+            y2 - y0,
+            x2 - 7.0 - x0,
+            y2 + 4.0 - y0
+        );
+        (p, [x0, y0, xe - x0, ye - y0])
     };
+    let drawn: Vec<(usize, usize, String, [f32; 4])> = links.iter().map(|&(a, b)| { let (p, bx) = path(a, b); (a, b, p, bx) }).collect();
     Layout {
-        edges: links.iter().map(|&(a, b)| (a, b, path(a, b))).collect(),
+        boxes: drawn.iter().map(|d| d.3).collect(),
+        edges: drawn.into_iter().map(|d| (d.0, d.1, d.2)).collect(),
         width: MARGIN * 2.0 + depth as f32 * NODE_W + depth.saturating_sub(1) as f32 * H_GAP,
         height: MARGIN * 2.0 + rows as f32 * NODE_H + rows.saturating_sub(1) as f32 * V_GAP,
         placed,
@@ -816,7 +841,8 @@ fn push_graph(app: &AppWindow) {
         st.set_edges(model(
             lay.edges
                 .iter()
-                .map(|(a, b, path)| {
+                .zip(lay.boxes.iter())
+                .map(|((a, b, path), bx)| {
                     let kind = e.edges.iter().find(|x| x.from == e.nodes[*a].id && x.to == e.nodes[*b].id).map(|x| x.kind.as_str()).unwrap_or("");
                     let tone = if !e.nodes[*b].supported {
                         3
@@ -827,7 +853,7 @@ fn push_graph(app: &AppWindow) {
                             _ => 0,
                         }
                     };
-                    GEdge { commands: path.as_str().into(), tone }
+                    GEdge { commands: path.as_str().into(), tone, x: bx[0], y: bx[1], w: bx[2], h: bx[3] }
                 })
                 .collect(),
         ));
@@ -1204,6 +1230,18 @@ mod tests {
         assert_eq!(lay.placed.len(), 2);
         let empty = layout(&[], &[]);
         assert_eq!((empty.width, empty.height), (MARGIN * 2.0, MARGIN * 2.0));
+    }
+
+    #[test]
+    fn layout_stays_inside_what_the_renderer_draws() {
+        // a ring of 200 nodes: the longest path never ends, and the canvas must not grow with it
+        let nodes: Vec<NodeData> = (0..200).map(|i| NodeData { id: format!("n{i}"), kind: "claim".into(), label: "".into(), status: "".into(), supported: true }).collect();
+        let edges: Vec<EdgeData> = (0..200).map(|i| EdgeData { from: format!("n{i}"), to: format!("n{}", (i + 1) % 200), kind: "premise".into() }).collect();
+        let lay = layout(&nodes, &edges);
+        assert!(lay.width < 12000.0 && lay.height < 12000.0, "{} x {}", lay.width, lay.height);
+        let many: Vec<NodeData> = (0..2000).map(|i| NodeData { id: format!("m{i}"), kind: "claim".into(), label: "".into(), status: "".into(), supported: true }).collect();
+        let lay = layout(&many, &[]);
+        assert!(lay.height < 12000.0, "{}", lay.height);
     }
 
     #[test]

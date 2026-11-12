@@ -237,5 +237,5 @@ pub fn render(app: &AppWindow) {
         .collect();
     ts.set_graph_nodes(ModelRc::from(Rc::new(VecModel::from(nodes))));
     ts.set_graph_edges(ModelRc::from(Rc::new(VecModel::from(edges))));
-    ts.set_graph_height((g.levels as f32 * 64.0 + 56.0).max(120.0));
+    ts.set_graph_height((g.levels as f32 * 64.0 + 56.0).clamp(120.0, 12000.0));
 }

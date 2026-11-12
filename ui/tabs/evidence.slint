@@ -44,6 +44,11 @@ export struct GNode {
 
 export struct GEdge {
     commands: string,
+    // the box of the line: its Path is only this big
+    x: length,
+    y: length,
+    w: length,
+    h: length,
     // 0 = supports, 1 = premise, 2 = cites, 3 = 根拠のないノードへ
     tone: int,
 }
@@ -476,12 +481,12 @@ component MapView inherits Rectangle {
             content-height: max(EvidenceState.canvas-h, self.height);
             // 先にエッジ、後にノード(ノードが線の上に出る)
             for e in EvidenceState.edges: Path {
-                x: 0px;
-                y: 0px;
-                width: EvidenceState.canvas-w;
-                height: EvidenceState.canvas-h;
-                viewbox-width: EvidenceState.canvas-w / 1px;
-                viewbox-height: EvidenceState.canvas-h / 1px;
+                x: e.x;
+                y: e.y;
+                width: e.w;
+                height: e.h;
+                viewbox-width: e.w / 1px;
+                viewbox-height: e.h / 1px;
                 commands: e.commands;
                 fill: transparent;
                 stroke-width: 1.5px;
