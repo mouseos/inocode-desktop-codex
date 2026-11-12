@@ -174,6 +174,8 @@ export global AccountsState {
     callback make-default;
     // The models of the open provider are read again; a provider of the config is edited or removed
     callback reload-models;
+    // The key of an API-key account is replaced (inocode/accounts/update)
+    callback replace-key(string);
     callback edit-provider;
     callback remove-provider(string);
     // The provider being edited with the form of step 3 (empty: a new one)
@@ -651,6 +653,7 @@ export component AccountsView inherits Rectangle {
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
+                    if AccountsState.cur.kind-label == "API キー": ActionButton { label: "API キーを差し替える"; clicked => { AccountsState.replace-key(AccountsState.cur.id); } }
                     if AccountsState.confirm-id != AccountsState.cur.id: ActionButton { danger: true; label: "このアカウントを削除"; clicked => { AccountsState.confirm-id = AccountsState.cur.id; } }
                     if AccountsState.confirm-id == AccountsState.cur.id: ActionButton { danger: true; label: "削除する(ログイン情報も消えます)"; clicked => { AccountsState.remove(AccountsState.cur.id); } }
                     if AccountsState.confirm-id == AccountsState.cur.id: ActionButton { label: "やめる"; clicked => { AccountsState.confirm-id = ""; } }

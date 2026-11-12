@@ -22,6 +22,8 @@ struct Data {
     auth_url: String,
     /// The API key kept while the pool answers (fallback to the plain login).
     pending_key: Option<String>,
+    /// The API-key account whose key is being replaced (the key form is open for it).
+    replace_id: Option<String>,
     /// The operation id of a credit use that got no answer (resent as it is: never used twice).
     credit_op: Option<String>,
     /// The accounts there were when the sign-in started, and the checks made since (a new one means done).
@@ -160,7 +162,11 @@ pub(crate) fn begin(app: &AppWindow, kind: &str) {
         }
     }
     let st = app.global::<AccountsState>();
-    DATA.with(|d| d.borrow_mut().reauth_id = None);
+    DATA.with(|d| {
+        let mut d = d.borrow_mut();
+        d.reauth_id = None;
+        d.replace_id = None;
+    });
     st.set_add_alias("".into());
     st.set_add_key("".into());
     st.set_code_value("".into());
@@ -857,6 +863,12 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         let alias = if alias.is_empty() { crate::settings_page::provider_name(&provider) } else { alias };
         // The key leaves the field at once.
         st.set_add_key("".into());
+        // A key that replaces the one of an account: the account is updated, not added.
+        if let Some(id) = DATA.with(|d| d.borrow().replace_id.clone()) {
+            rpc("acct.update", "inocode/accounts/update", json!({ "id": id, "apiKey": key }));
+            login_note(&app, "差し替えています…");
+            return;
+        }
         let mut params = json!({ "alias": alias, "apiKey": key });
         if provider != "openai" {
             params["provider"] = json!(provider);
@@ -1020,7 +1032,24 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
             }
         }
     });
-    st.on_reload_models(|| crate::model_init::refresh_providers());
+    let weak = app.as_weak();
+    st.on_reload_models(move || {
+        let Some(app) = weak.upgrade() else { return };
+        // The server reads the list again, without its cache; then the lists of the picker follow.
+        let pid = app.global::<AccountsState>().get_provider_id().to_string();
+        let params = if pid.is_empty() { json!({}) } else { json!({ "modelProvider": pid }) };
+        rpc("acct.mrefresh", "inocode/models/refresh", params);
+        note(&app, "モデルを読み込み直しています…");
+    });
+    let weak = app.as_weak();
+    st.on_replace_key(move |id| {
+        let Some(app) = weak.upgrade() else { return };
+        let provider = DATA.with(|d| d.borrow().accounts.iter().find(|a| s(a, "id") == id.as_str()).map(|a| provider_of(a).to_string())).unwrap_or_else(|| "openai".into());
+        begin(&app, &format!("key:{provider}"));
+        let st = app.global::<AccountsState>();
+        DATA.with(|d| d.borrow_mut().replace_id = Some(id.to_string()));
+        st.set_add_title("API キーを差し替える".into());
+    });
     let weak = app.as_weak();
     st.on_edit_provider(move || {
         let Some(app) = weak.upgrade() else { return };
@@ -1118,6 +1147,9 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
                 }
                 "acct.login.start" | "acct.login.complete" => login_error(app, e),
                 "acct.login.key" => login_note(app, &format!("できませんでした: {}", crate::errmsg::short(e))),
+                // The key was refused (or the account is gone): nothing changed.
+                "acct.update" => login_note(app, &format!("差し替えできませんでした: {}", crate::errmsg::short(e))),
+                "acct.mrefresh" => note(app, &format!("モデルを読み込み直せませんでした: {}", crate::errmsg::short(e))),
                 "acct.poll" => {}
                 "acct.history" => {
                     st.set_history_loading(false);
@@ -1289,6 +1321,21 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
             login_note(app, if entry { "ブラウザでログインし、表示されたコードを貼り付けてください" } else { "" });
         }
         "acct.login.complete" => login_note(app, "確認しました。完了を待っています…"),
+        "acct.update" => {
+            DATA.with(|d| d.borrow_mut().replace_id = None);
+            st.set_add_step(0);
+            // The id follows the key: the account has a new one, so back to the provider's screen.
+            st.set_account_id("".into());
+            let unverified = v.get("verification").and_then(|x| x.get("status")).and_then(Value::as_str) == Some("unverified");
+            note(app, if unverified { "API キーを差し替えました(検証できませんでした)" } else { "API キーを差し替えました" });
+            refresh(false);
+            crate::model_init::refresh_providers();
+        }
+        "acct.mrefresh" => {
+            let n = v.get("models").and_then(Value::as_array).map(Vec::len).unwrap_or(0);
+            note(app, &format!("モデルを読み込み直しました({n} 件)"));
+            crate::model_init::refresh_providers();
+        }
         "acct.login.key" | "acct.addkey" => {
             DATA.with(|d| d.borrow_mut().pending_key = None);
             st.set_add_step(0);
