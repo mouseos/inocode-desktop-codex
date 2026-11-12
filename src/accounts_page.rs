@@ -1167,7 +1167,10 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
             });
             render(app);
         }
-        "acct.act" => refresh(false),
+        "acct.act" => {
+            refresh(false);
+            crate::model_init::refresh_providers();
+        }
         "acct.history" => {
             st.set_history_loading(false);
             st.set_history(ModelRc::from(Rc::new(VecModel::from(history_rows(&v)))));
@@ -1252,6 +1255,7 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
             let unverified = v.get("verification").and_then(|x| x.get("status")).and_then(Value::as_str) == Some("unverified");
             note(app, if unverified { "API キーを追加しました(検証できませんでした)" } else { "API キーを追加しました" });
             refresh(false);
+            crate::model_init::refresh_providers();
         }
         _ => {}
     }

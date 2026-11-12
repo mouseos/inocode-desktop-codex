@@ -78,6 +78,13 @@ mod tests {
     }
 
     #[test]
+    fn a_title_is_taken_from_fenced_or_wrapped_json() {
+        assert_eq!(clean_title("```json\n{\"title\": \"計算の結果\"}\n```").as_deref(), Some("計算の結果"));
+        assert_eq!(clean_title("タイトルです: {\"title\":\"abc\"} 以上").as_deref(), Some("abc"));
+        assert_eq!(clean_title("```\nplain words\n```").as_deref(), Some("plain words"));
+    }
+
+    #[test]
     fn a_made_title_is_cleaned() {
         assert_eq!(clean_title("{\"title\":\"「V100 の調査」\"}").unwrap(), "V100 の調査");
         assert_eq!(clean_title("\"Fix the build.\"

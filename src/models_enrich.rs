@@ -46,7 +46,7 @@ const USES: [(&str, &str); 8] = [
     ("math", "数学"),
     ("agentic", "エージェント"),
     ("long_context", "長文"),
-    ("general", "総合"),
+    ("general", "総合順位"),
     ("speed", "速度"),
     ("price", "価格"),
 ];
@@ -188,6 +188,12 @@ pub(crate) fn describe(st: &State, m: &ModelInfo) -> String {
             None => format!("{} 未測定", use_label(u)),
         });
     }
+    // The overall rank (the best of the metrics of "general"), on every row that has one.
+    if st.use_filter.as_deref() != Some("general") {
+        if let Some(s) = e.scores.iter().filter(|s| s.use_ == "general" && s.rank > 0).min_by_key(|s| s.rank) {
+            parts.push(format!("総合 {}位 / {}", s.rank, s.n));
+        }
+    }
     if !e.price_text.is_empty() {
         parts.push(e.price_text.clone());
     }
@@ -213,6 +219,13 @@ pub(crate) fn request() {
 pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>) {
     if tag != "model.enrich" {
         return;
+    }
+    // INOCODE_GUI_RPC_LOG=<file>: what the server answered.
+    if let Ok(path) = std::env::var("INOCODE_GUI_RPC_LOG") {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            let _ = writeln!(f, "enrich reply {}", match result { Ok(v) => v.to_string().chars().take(2500).collect::<String>(), Err(e) => format!("error {e}") });
+        }
     }
     // A server that does not know the call: the picker stays as it is.
     let Ok(v) = result else { return };

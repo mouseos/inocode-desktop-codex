@@ -93,6 +93,8 @@ pub(super) enum Pending {
     /// The thread that makes the title of another (ephemeral), and its one turn.
     TitleThread,
     TitleTurn,
+    /// thread/name/set of a made title: a failure leaves the name as it was, quietly.
+    TitleName,
     Models,
     Requirements,
     Config,
@@ -551,7 +553,10 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                 Pending::Config => return self.begin_thread(),
                 Pending::Daybreak => {}
                 // No title: the first words of the message stay as it.
-                Pending::TitleThread | Pending::TitleTurn => self.title = None,
+                Pending::TitleThread | Pending::TitleTurn | Pending::TitleName => {
+                    super::notify::rpc_log(&format!("title error: {message}"));
+                    self.title = None;
+                }
                 _ => self.report_error(&message),
             }
             return Ok(());
@@ -700,7 +705,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                     _ => self.title = None,
                 }
             }
-            Pending::TitleTurn | Pending::Other => {}
+            Pending::TitleTurn | Pending::TitleName | Pending::Other => {}
         }
         Ok(())
     }

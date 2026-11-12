@@ -92,6 +92,7 @@ impl<F: Fn(Event)> Session<'_, F> {
 
     /// What the title thread says: the notifications of it do not go to the chat.
     fn title_note(&mut self, method: &str, params: &Value) {
+        rpc_log(&format!("title note {method} {}", params.to_string().chars().take(900).collect::<String>()));
         match method {
             "item/agentMessage/delta" => {
                 if let (Some(job), Some(d)) = (self.title.as_mut(), params.get("delta").and_then(Value::as_str)) {
@@ -110,8 +111,11 @@ impl<F: Fn(Event)> Session<'_, F> {
             }
             "turn/completed" => {
                 if let Some(job) = self.title.take() {
+                    rpc_log(&format!("title text {:?} -> {:?}", job.buf, clean_title(&job.buf)));
                     if let Some(name) = clean_title(&job.buf) {
-                        let _ = self.request("thread/name/set", json!({ "threadId": job.target, "name": name }), Pending::Other);
+                        let _ = self.request("thread/name/set", json!({ "threadId": job.target, "name": name.clone() }), Pending::TitleName);
+                        // The header shows it at once (the server also says it with thread/name/updated).
+                        (self.on_event)(Event::Notify { method: "thread/name/updated".into(), params: json!({ "threadId": job.target, "threadName": name }) });
                     }
                 }
             }
@@ -336,3 +340,13 @@ impl<F: Fn(Event)> Session<'_, F> {
     }
 }
 
+
+/// INOCODE_GUI_RPC_LOG=<file>: a line of what a run saw (the requests are logged by the session).
+pub(super) fn rpc_log(line: &str) {
+    if let Ok(path) = std::env::var("INOCODE_GUI_RPC_LOG") {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            let _ = writeln!(f, "{line}");
+        }
+    }
+}

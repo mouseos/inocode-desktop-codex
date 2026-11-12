@@ -224,7 +224,7 @@ pub(crate) fn install(app: &AppWindow) {
     if std::env::var("INOCODE_GUI_OPEN").as_deref() == Ok("picker") {
         let weak = app.as_weak();
         let t = slint::Timer::default();
-        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 3), move || {
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay.saturating_sub(4).max(2)), move || {
             if let Some(app) = weak.upgrade() {
                 app.global::<PickerDemo>().set_open(true);
             }

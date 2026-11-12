@@ -195,10 +195,18 @@ pub fn guardian_event(p: &Value) -> Value {
 /// 60 characters. None when it made nothing.
 pub fn clean_title(raw: &str) -> Option<String> {
     let raw = raw.trim();
-    let text = serde_json::from_str::<Value>(raw)
+    // A model without structured output may fence the JSON or put words around it: take the object.
+    let object = match (raw.find('{'), raw.rfind('}')) {
+        (Some(a), Some(b)) if a < b => &raw[a..=b],
+        _ => raw,
+    };
+    let text = serde_json::from_str::<Value>(object)
         .ok()
         .and_then(|v| v.get("title").and_then(Value::as_str).map(str::to_string))
-        .unwrap_or_else(|| raw.lines().next().unwrap_or("").to_string());
+        .unwrap_or_else(|| {
+            // No JSON: the first line that is not a fence.
+            raw.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with("```")).unwrap_or("").to_string()
+        });
     let t = text.trim().trim_matches(|c: char| matches!(c, '"' | '\'' | '「' | '」' | '『' | '』' | '“' | '”' | '`')).trim().trim_end_matches('。').trim();
     if t.is_empty() {
         None
