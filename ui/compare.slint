@@ -18,6 +18,8 @@ export struct CmpRow {
     reasoning: string,
     ctx: string,
     speed: string,
+    // The speed was measured by this app (else it is a benchmark's value: paler)
+    speed-measured: bool,
     picked: bool,
 }
 
@@ -98,12 +100,13 @@ component Cell inherits Rectangle {
     in property <string> text;
     in property <bool> align-right: false;
     in property <int> weight: 400;
+    in property <bool> muted: false;
     Text {
         x: 12px;
         width: parent.width - 24px;
         height: parent.height;
         text: root.text;
-        color: root.text == "—" ? Theme.fg-tertiary : Theme.fg;
+        color: root.text == "—" ? Theme.fg-tertiary : root.muted ? Theme.fg-secondary : Theme.fg;
         font-size: 13px;
         font-weight: root.weight;
         vertical-alignment: center;
@@ -313,7 +316,7 @@ export component CompareModal inherits Rectangle {
                                     Cell { width: root.w-agentic; text: r.agentic; align-right: true; }
                                     Cell { width: root.w-reasoning; text: r.reasoning; align-right: true; }
                                     Cell { width: root.w-ctx; text: r.ctx; align-right: true; }
-                                    Cell { width: root.w-speed; text: r.speed; align-right: true; }
+                                    Cell { width: root.w-speed; text: r.speed; align-right: true; muted: !r.speed-measured; }
                                 }
                                 rta := TouchArea {
                                     clicked => { CompareState.row-clicked(i); }

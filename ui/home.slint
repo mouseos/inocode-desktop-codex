@@ -13,6 +13,7 @@ import { AttachState, AttachChips, SuggestList, SentPill } from "attach.slint";
 import { PromptState, QuestionCard, QueueList, ErrorBanner } from "prompts.slint";
 import { MarkdownView } from "markdown.slint";
 import { ReplyState, ReplyChips, RefChip } from "reply.slint";
+import { CardView } from "cards.slint";
 import { GitState, GitChip, GitPanel } from "git_panel.slint";
 import { GoalState, GoalCards } from "goal.slint";
 
@@ -349,6 +350,12 @@ component ActionRow inherits HorizontalLayout {
     callback toggle-select;
     // Copy shows a check mark for 1.2 s, as in Claude Desktop.
     property <bool> copied: false;
+    property <bool> link-copied: false;
+    Timer {
+        interval: 1200ms;
+        running: root.link-copied;
+        triggered => { root.link-copied = false; }
+    }
     spacing: 2px;
     alignment: user ? LayoutAlignment.end : LayoutAlignment.start;
     height: 24px;
@@ -367,6 +374,15 @@ component ActionRow inherits HorizontalLayout {
         }
     }
     IconButton { glyph: "\u{e15e}"; box-size: 24px; icon-size: 14px; clicked => { MessageActions.act("reply", root.index); } }
+    if root.ref-id != "": IconButton {
+        glyph: root.link-copied ? "\u{e5ca}" : Glyph.link;
+        box-size: 24px;
+        icon-size: 14px;
+        clicked => {
+            root.link-copied = true;
+            MessageActions.act("copy-link", root.index);
+        }
+    }
     if root.ref-id != "": Text {
         text: root.ref-id;
         color: Theme.fg-tertiary;
@@ -487,7 +503,7 @@ component ChatView inherits Rectangle {
                         if sel.anchor-position-byte-offset != sel.cursor-position-byte-offset: HorizontalLayout {
                             alignment: start;
                             ApprovalButton {
-                                label: "選択範囲に返信";
+                                label: "選択範囲を引用";
                                 clicked => {
                                     MessageActions.reply-selection(mi, min(sel.anchor-position-byte-offset, sel.cursor-position-byte-offset), max(sel.anchor-position-byte-offset, sel.cursor-position-byte-offset));
                                     sel.clear-selection();
@@ -495,12 +511,13 @@ component ChatView inherits Rectangle {
                             }
                         }
                     }
+                    if m.role == "card": CardView { card: m.card; index: mi; }
                     if m.role == "tool": ToolRow { text: m.text; detail: m.detail; diff: m.diff; running: m.running; blocks: m.blocks; index: mi; }
                     if m.role == "tool" && m.blocks.length > 0 && AppState.plan-mode: HorizontalLayout {
                         alignment: start;
                         ApprovalButton { label: "この計画で実行"; primary: true; clicked => { MessageActions.act("run-plan", mi); } }
                     }
-                    if m.role != "tool": ActionRow {
+                    if m.role != "tool" && m.role != "card": ActionRow {
                         user: m.role == "user";
                         index: mi;
                         ref-id: m.ref-id;

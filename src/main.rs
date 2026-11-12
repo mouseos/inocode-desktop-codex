@@ -3,6 +3,7 @@
 mod chat_actions;
 mod chat_cmds;
 mod os_notify;
+mod cards;
 mod chat_md;
 mod compare;
 mod coding;

@@ -314,6 +314,10 @@ pub(crate) fn clear_suggestions(app: &AppWindow) {
 
 /// The composer text changed: show the @ file suggestions or the slash commands.
 fn on_text(app: &AppWindow, text: &str) {
+    // A pasted link of a message becomes a card.
+    if crate::reply::pasted_links(app, text) {
+        return;
+    }
     // "/" at the start, no space yet: command names.
     if text.starts_with('/') && !text.contains(' ') {
         let rows: Vec<SuggestRow> = SLASH

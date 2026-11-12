@@ -9,14 +9,14 @@ pub(crate) fn refresh_pickers(app: &AppWindow, st: &State) {
     let sel = selected_model(st, &visible);
 
     // Reasoning effort
-    let efforts: Vec<String> = sel.map(|m| m.efforts.clone()).unwrap_or_default();
+    let efforts: Vec<String> = sel.map(efforts_of).unwrap_or_default();
     let eff = st
         .settings
         .effort
         .clone()
         .filter(|e| efforts.contains(e))
         .or_else(|| Some(st.applied_effort.clone()).filter(|e| efforts.contains(e)))
-        .or_else(|| sel.map(|m| m.default_effort.clone()));
+        .or_else(|| sel.map(|m| if m.default_effort.is_empty() { "medium".to_string() } else { m.default_effort.clone() }));
     let ei = eff.as_ref().and_then(|e| efforts.iter().position(|x| x == e));
     let eff_text = ei.map(|i| effort_label(&efforts[i])).unwrap_or_default();
 

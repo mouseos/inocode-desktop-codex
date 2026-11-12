@@ -39,6 +39,10 @@ pub(crate) struct Enrich {
     pub(crate) price_out: Option<f64>,
     /// The price as the picker and the table show it: "$10 / $50", "無料", "Theos 3 / 回".
     pub(crate) price_plain: String,
+    /// The context window in tokens, when the server knows it.
+    pub(crate) ctx: Option<i64>,
+    /// Tokens per second, and whether it was measured by this app (else it is a benchmark's value).
+    pub(crate) speed: Option<(f64, bool)>,
 }
 
 /// The uses of the filter, in the order shown: (key, label). "price" is the order by price.
@@ -156,7 +160,12 @@ pub(crate) fn parse(v: &Value) -> (HashMap<(String, String), Enrich>, Vec<String
             .unwrap_or(&price_text)
             .trim_end_matches("(上限)")
             .to_string();
-        out.insert(key, Enrich { scores, price_text, price_out, price_plain });
+        let ctx = m.get("contextWindow").and_then(Value::as_i64).filter(|c| *c > 0);
+        let speed = m
+            .pointer("/speed/tokensPerSecond")
+            .and_then(Value::as_f64)
+            .map(|v| (v, m.pointer("/speed/source").and_then(Value::as_str) == Some("inocode_measured")));
+        out.insert(key, Enrich { scores, price_text, price_out, price_plain, ctx, speed });
     }
     let credits = v
         .get("sources")

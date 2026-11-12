@@ -118,6 +118,14 @@ pub(crate) enum Kind {
     Daybreak,
 }
 
+/// The reasoning steps of a model: its own, else the standard three (a model that does not say which
+/// it has can still be asked for one; nothing is hidden).
+pub(crate) fn efforts_of(m: &ModelInfo) -> Vec<String> {
+    // The bar is for the models that name their steps (the server says none only of a model that
+    // does not reason in steps).
+    m.efforts.clone()
+}
+
 /// A row of the model list: the heading of a provider (open or closed), or a model in one mode.
 pub(crate) enum Item<'a> {
     Heading(String, bool),

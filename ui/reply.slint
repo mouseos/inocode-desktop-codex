@@ -1,63 +1,73 @@
 import { Theme } from "theme.slint";
 import { IconButton } from "widgets.slint";
-import { Glyph } from "icons.slint";
+import { Icon, Glyph } from "icons.slint";
 
-// Replying to a message by its number (#<turn>.<item>). Rust: src/reply.rs.
+// Quoting a message by its number (#<turn>.<item>) and the thread. Rust: src/reply.rs.
+// One card for the composer, the messages of the chat and the answers: the quote icon, who said
+// it (and its number), and the first three lines. Background only: no line, frame or shadow.
 
 export struct ReplyRef {
     id: string,
     // the start of the message it points at
     hint: string,
+    // the thread of the message when it is not the open one (empty: this one)
+    thread: string,
+    // "自分 · #1.2": who said it, its number, and the name of the other thread
+    head: string,
+    // at most three lines of the text
+    lines: [string],
+    // the message cannot be read or opened: pale, and nothing happens when it is pressed
+    dim: bool,
 }
 
 export global ReplyState {
-    // The messages the next message replies to.
+    // The quotes the next message carries.
     in property <[ReplyRef]> chips;
     callback remove(int);
-    // A chip of a message was clicked: scroll to the message it points at.
-    callback jump(string);
+    // A card was pressed: go to the message it points at (the thread is empty for the open one).
+    callback jump(string, string);
 }
 
-// A reply in a message of the chat: the number and the start of the text.
-export component RefChip inherits Rectangle {
+export component QuoteCard inherits Rectangle {
     in property <ReplyRef> item;
-    height: 22px;
-    width: min(t.preferred-width + 16px, 460px);
-    border-radius: 11px;
-    background: ta.has-hover ? Theme.pressed : Theme.hover;
-    t := Text {
-        x: 8px;
-        width: parent.width - 16px;
-        text: "\u{21a9} " + root.item.id + " " + root.item.hint;
-        color: Theme.fg-secondary;
-        font-size: 11px;
-        vertical-alignment: center;
-        overflow: elide;
+    in property <bool> removable: false;
+    callback removed;
+    height: col.preferred-height + 12px;
+    max-width: 300px;
+    border-radius: 8px;
+    background: !root.item.dim && ta.has-hover ? Theme.pressed : Theme.hover;
+    ta := TouchArea {
+        enabled: !root.item.dim;
+        mouse-cursor: root.item.dim ? MouseCursor.default : MouseCursor.pointer;
+        clicked => { ReplyState.jump(root.item.thread, root.item.id); }
     }
-    ta := TouchArea { mouse-cursor: pointer; clicked => { ReplyState.jump(root.item.id); } }
-}
-
-// The replies that are ready, above the text field of the composer.
-export component ReplyChips inherits HorizontalLayout {
-    spacing: 4px;
-    alignment: start;
-    for c[i] in ReplyState.chips: Rectangle {
-        height: 24px;
-        width: min(lbl.preferred-width + 44px, 360px);
-        border-radius: 12px;
-        background: Theme.hover;
-        HorizontalLayout {
-            padding-left: 8px;
-            padding-right: 2px;
-            spacing: 4px;
-            lbl := Text {
-                text: "\u{21a9} " + c.id + " " + c.hint;
-                color: Theme.fg;
+    HorizontalLayout {
+        padding: 6px;
+        padding-left: 8px;
+        spacing: 6px;
+        Icon { width: 16px; y: 2px; height: 16px; text: Glyph.quote; font-size: 14px; color: root.item.dim ? Theme.fg-tertiary : Theme.fg-secondary; }
+        col := VerticalLayout {
+            horizontal-stretch: 1;
+            Text { text: root.item.head; color: Theme.fg-tertiary; font-size: 11px; overflow: elide; }
+            for l in root.item.lines: Text {
+                text: l;
+                color: root.item.dim ? Theme.fg-tertiary : Theme.fg;
                 font-size: 12px;
-                vertical-alignment: center;
                 overflow: elide;
             }
-            IconButton { glyph: Glyph.close; box-size: 20px; icon-size: 12px; y: 2px; clicked => { ReplyState.remove(i); } }
         }
+        if root.removable: IconButton { glyph: Glyph.close; box-size: 20px; icon-size: 12px; clicked => { root.removed(); } }
+    }
+}
+
+// A quote in a message of the chat.
+export component RefChip inherits QuoteCard { }
+
+// The quotes that are ready, above the text field of the composer (they wrap; one per row when narrow).
+export component ReplyChips inherits VerticalLayout {
+    spacing: 4px;
+    for c[i] in ReplyState.chips: HorizontalLayout {
+        alignment: start;
+        QuoteCard { item: c; removable: true; removed => { ReplyState.remove(i); } }
     }
 }

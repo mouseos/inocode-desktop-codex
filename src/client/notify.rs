@@ -101,6 +101,10 @@ impl<F: Fn(Event)> Session<'_, F> {
             }
             "item/completed" => {
                 let item = params.get("item").unwrap_or(&Value::Null);
+                // The result of a tool may be a card (something registered): the screen reads it.
+                if matches!(item.get("type").and_then(Value::as_str), Some("mcpToolCall" | "dynamicToolCall")) && self.is_active_thread(params) {
+                    (self.on_event)(Event::Notify { method: "gui/toolResult".into(), params: item.clone() });
+                }
                 if item.get("type").and_then(Value::as_str) == Some("agentMessage") {
                     if let (Some(job), Some(t)) = (self.title.as_mut(), item.get("text").and_then(Value::as_str)) {
                         if !t.trim().is_empty() {

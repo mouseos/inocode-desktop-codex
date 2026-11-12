@@ -278,6 +278,7 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
             crate::coding::on_rpc(app, &tag, &result);
             crate::reply::on_rpc(app, &tag, &result);
             crate::chat_cmds::on_rpc(app, &tag, &result);
+            crate::cards::on_rpc(app, &tag, &result);
         }
         Event::Notify { method, params } => {
             crate::panel_data::on_notify(app, &method, &params);
@@ -305,6 +306,7 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
                 app.invoke_scroll_bottom();
             }
             crate::coding::on_notify(app, &method, &params);
+            crate::cards::on_notify(app, &method, &params);
             crate::sidebar::on_notify(&method);
             crate::prompts::on_notify(&method);
         }

@@ -51,12 +51,24 @@ struct Line {
     coding: Option<(f64, i64)>,
     agentic: Option<f64>,
     reasoning: Option<f64>,
-    speed: Option<f64>,
+    ctx: Option<i64>,
+    /// Tokens per second and whether this app measured it
+    speed: Option<(f64, bool)>,
 }
 
 fn metric<'a>(scores: &'a [Score], name: &str) -> Option<&'a Score> {
     // One metric can be measured in several settings: the best value is the one shown.
     scores.iter().filter(|s| s.metric == name).max_by(|a, b| a.value.partial_cmp(&b.value).unwrap_or(std::cmp::Ordering::Equal))
+}
+
+/// 400000 -> "400K", 1000000 -> "1M"
+fn ctx_text(c: i64) -> String {
+    if c >= 1_000_000 {
+        let m = c as f64 / 1_000_000.0;
+        if (m - m.round()).abs() < 0.05 { format!("{}M", m.round() as i64) } else { format!("{m:.1}M") }
+    } else {
+        format!("{}K", (c as f64 / 1000.0).round() as i64)
+    }
 }
 
 fn dash(v: Option<String>) -> String {
@@ -90,7 +102,9 @@ fn lines(st: &State) -> Vec<Line> {
             coding: metric(scores, "livebench_coding").map(|s| (s.value * 100.0, s.rank)),
             agentic: metric(scores, "livebench_long_agentic").map(|s| s.value * 100.0),
             reasoning: metric(scores, "epoch_gpqa_diamond").or_else(|| metric(scores, "livebench_reasoning")).map(|s| s.value * 100.0),
-            speed: metric(scores, "or_output_tokens_per_second").map(|s| s.value),
+            ctx: e.and_then(|e| e.ctx),
+            // What this app measured goes first; else the benchmark's value.
+            speed: e.and_then(|e| e.speed).or_else(|| metric(scores, "or_output_tokens_per_second").map(|s| (s.value, false))),
         });
     }
     out
@@ -124,7 +138,8 @@ fn filtered(st: &State, c: &Cmp) -> Vec<Line> {
             "c" => l.coding.map(|(v, _)| v),
             "a" => l.agentic,
             "s" => l.reasoning,
-            "v" => l.speed,
+            "v" => l.speed.map(|(v, _)| v),
+            "x" => l.ctx.map(|c| c as f64),
             _ => None,
         }
     };
@@ -132,7 +147,6 @@ fn filtered(st: &State, c: &Cmp) -> Vec<Line> {
         let ord = match key {
             "pv" => a.provider.cmp(&b.provider),
             "n" => a.model.to_lowercase().cmp(&b.model.to_lowercase()),
-            "x" => std::cmp::Ordering::Equal,
             _ => {
                 let (x, y) = (num(a), num(b));
                 return match (x, y) {
@@ -169,9 +183,9 @@ pub(crate) fn rebuild(app: &AppWindow) {
                     coding: dash(l.coding.map(|(v, _)| format!("{v:.1}"))).into(),
                     agentic: dash(l.agentic.map(|v| format!("{v:.1}"))).into(),
                     reasoning: dash(l.reasoning.map(|v| format!("{v:.1}"))).into(),
-                    // Not in what the server returns yet.
-                    ctx: "—".into(),
-                    speed: dash(l.speed.map(|v| format!("{}", v.round() as i64))).into(),
+                    ctx: dash(l.ctx.map(ctx_text)).into(),
+                    speed: dash(l.speed.map(|(v, _)| format!("{}", v.round() as i64))).into(),
+                    speed_measured: l.speed.map_or(false, |(_, m)| m),
                 })
                 .collect();
             let mut providers: Vec<String> = Vec::new();

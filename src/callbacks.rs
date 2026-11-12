@@ -188,7 +188,7 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         let Some(app) = weak.upgrade() else { return };
         change(&app, &h, |st| {
             let visible = visible_models(st);
-            let efforts = selected_model(st, &visible).map(|m| m.efforts.clone()).unwrap_or_default();
+            let efforts = selected_model(st, &visible).map(efforts_of).unwrap_or_default();
             if let Some(e) = efforts.get(i as usize) {
                 st.settings.effort = Some(e.clone());
             }
@@ -273,6 +273,7 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
     app.global::<AppState>().on_switch_transport(move || h.send(Command::SwitchTransport));
     crate::projects::register(handle);
     crate::compare::register(app);
+    crate::cards::register(app, handle);
     crate::coding::register(app, handle);
     crate::chat_md::register(app);
     crate::git_panel::register(app, handle);

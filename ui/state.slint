@@ -3,6 +3,7 @@ import { ProjectItem } from "sidebar.slint";
 import { DiscoveryState } from "settings.slint";
 import { MdRow } from "markdown.slint";
 import { ReplyRef } from "reply.slint";
+import { ChatCard } from "cards.slint";
 
 // One row of a diff in the chat. kind: 0 context, 1 added, 2 removed, 3 file heading (text = the
 // name, added / removed = "+3" / "−1"), 4 gap between hunks, 5 note.
@@ -61,6 +62,8 @@ export struct Message {
     diff: [DiffRow],
     // A tool row of something that is still going on (it moves)
     running: bool,
+    // A card of the chat (role "card"): a guard that stopped an operation, something registered
+    card: ChatCard,
 }
 
 // チャット画面の状態とコールバックをここに集約する。Rust は app.global::<AppState>() で触り、
