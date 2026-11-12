@@ -249,6 +249,7 @@ component Composer inherits VerticalLayout {
                     min-height: max(40px, input.preferred-height + 8px);
                     max-height: 240px;
                     input := TextInput {
+                        selection-foreground-color: Theme.fg;
                         y: 4px;
                         width: parent.width;
                         text <=> root.text;

@@ -113,12 +113,7 @@ pub(crate) fn refresh_pickers(app: &AppWindow, st: &State) {
     app.global::<AppState>().set_perm(PermState { trigger: trigger.into(), danger, rows: rows(perm_rows) });
 
     // Projects: folders of the known threads.
-    let mut cwds: Vec<String> = Vec::new();
-    for t in &st.threads {
-        if !t.cwd.is_empty() && !cwds.contains(&t.cwd) {
-            cwds.push(t.cwd.clone());
-        }
-    }
+    let cwds = project_folders(st);
     let chosen = st.settings.cwd.clone().unwrap_or_else(|| st.active_cwd.clone());
     let base = |p: &str| {
         std::path::Path::new(p)
@@ -141,14 +136,19 @@ pub(crate) fn refresh_pickers(app: &AppWindow, st: &State) {
     // (kept in State by the caller through project_cwds)
 }
 
-pub(crate) fn sync_project_cwds(st: &mut State) {
+/// The folders the project picker offers: those of the known threads, then the server's projects.
+fn project_folders(st: &State) -> Vec<String> {
     let mut cwds: Vec<String> = Vec::new();
-    for t in &st.threads {
-        if !t.cwd.is_empty() && !cwds.contains(&t.cwd) {
-            cwds.push(t.cwd.clone());
+    for c in st.threads.iter().map(|t| &t.cwd).chain(st.server_projects.iter()) {
+        if !c.is_empty() && !cwds.contains(c) {
+            cwds.push(c.clone());
         }
     }
-    st.project_cwds = cwds;
+    cwds
+}
+
+pub(crate) fn sync_project_cwds(st: &mut State) {
+    st.project_cwds = project_folders(st);
 }
 
 pub(crate) fn messages_with<R>(app: &AppWindow, f: impl FnOnce(&VecModel<Message>) -> R) -> Option<R> {

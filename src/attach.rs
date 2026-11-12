@@ -236,7 +236,8 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
     app.global::<AttachState>().on_choose_folder(move || {
         let Some(app) = weak.upgrade() else { return };
         if let Some(dir) = rfd::FileDialog::new().set_title("作業フォルダを選択").pick_folder() {
-            // A new session in that folder, like picking a project.
+            // The folder becomes a project of the server, and a new session starts in it.
+            crate::projects::create(&dir.to_string_lossy());
             app.global::<AppState>().invoke_new_chat_in(dir.to_string_lossy().to_string().into());
             // A folder that was just added: ask whether to trust it.
             crate::sidebar::ask_trust(&app, &dir.to_string_lossy());

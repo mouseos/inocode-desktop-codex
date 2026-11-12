@@ -30,6 +30,8 @@ export component Field inherits Rectangle {
     border-width: 1px;
     border-color: ti.has-focus ? Theme.accent : Theme.border;
     ti := TextInput {
+        selection-foreground-color: Theme.fg;
+        selection-background-color: #4d8ff566;
         x: 8px;
         width: parent.width - 16px;
         height: parent.height;

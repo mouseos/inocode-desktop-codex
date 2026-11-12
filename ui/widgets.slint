@@ -148,6 +148,8 @@ export component NavRow inherits Rectangle {
             border-width: 1px;
             border-color: Theme.accent;
             ti := TextInput {
+                selection-foreground-color: Theme.fg;
+                selection-background-color: #4d8ff566;
                 x: 4px;
                 width: parent.width - 8px;
                 text <=> root.edit-text;
@@ -278,8 +280,9 @@ export component SelectChip inherits Rectangle {
     }
     pop := PopupWindow {
         x: 0px;
-        y: -(root.options.length * 28px + 10px);
+        y: -(self.height + 4px);
         width: 220px;
+        height: min(root.options.length * 28px + 8px, max(60px, root.absolute-position.y - 12px));
         Rectangle {
             border-radius: 10px;
             background: Theme.composer;
@@ -287,7 +290,10 @@ export component SelectChip inherits Rectangle {
             border-color: Theme.border;
             drop-shadow-blur: 16px;
             drop-shadow-color: #00000033;
-            VerticalLayout {
+            Flickable {
+              content-height: root.options.length * 28px + 8px;
+              VerticalLayout {
+                width: parent.width;
                 padding: 4px;
                 for o[i] in root.options: Rectangle {
                     height: 28px;
@@ -311,6 +317,7 @@ export component SelectChip inherits Rectangle {
                         clicked => { root.picked(i); }
                     }
                 }
+              }
             }
         }
     }

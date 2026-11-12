@@ -1,4 +1,4 @@
-import { Theme } from "theme.slint";
+import { Theme, PopupLimit } from "theme.slint";
 import { Icon, Glyph } from "icons.slint";
 import { IconButton } from "widgets.slint";
 
@@ -233,11 +233,14 @@ export component IntelligenceMenu inherits Rectangle {
         // Only a click outside (or Esc) closes it: model rows, slider, Fast and reset stay open.
         close-policy: PopupClosePolicy.close-on-click-outside;
         x: root.width - 300px;
-        y: -(lay.preferred-height + 12px);
+        y: -(self.height + 12px);
         width: 300px;
-        height: lay.preferred-height + 8px;
+        height: min(lay.preferred-height + 8px, max(120px, root.absolute-position.y - 16px));
         PopupSurface {
+          Flickable {
+            content-height: lay.preferred-height + 8px;
             lay := VerticalLayout {
+                width: parent.width;
                 padding: 6px;
                 spacing: 1px;
 
@@ -254,6 +257,8 @@ export component IntelligenceMenu inherits Rectangle {
                         Rectangle {
                             horizontal-stretch: 1;
                             si := TextInput {
+                                selection-foreground-color: Theme.fg;
+                                selection-background-color: #4d8ff566;
                                 x: 0px;
                                 y: 0px;
                                 width: parent.width;
@@ -375,6 +380,7 @@ export component IntelligenceMenu inherits Rectangle {
                     vertical-alignment: center;
                 }
             }
+          }
         }
     }
 }
@@ -394,11 +400,14 @@ export component PermMenu inherits Rectangle {
     }
     pop := PopupWindow {
         x: 0px;
-        y: -(lay.preferred-height + 12px);
+        y: -(self.height + 12px);
         width: 300px;
-        height: lay.preferred-height + 8px;
+        height: min(lay.preferred-height + 8px, max(120px, root.absolute-position.y - 16px));
         PopupSurface {
+          Flickable {
+            content-height: lay.preferred-height + 8px;
             lay := VerticalLayout {
+                width: parent.width;
                 padding: 6px;
                 spacing: 1px;
                 SectionLabel { text: "InoCode アクションの承認方法"; }
@@ -407,6 +416,7 @@ export component PermMenu inherits Rectangle {
                     picked => { root.pick(i); }
                 }
             }
+          }
         }
     }
 }
@@ -490,9 +500,12 @@ export component LocationRow inherits HorizontalLayout {
             x: 0px;
             y: 32px;
             width: 300px;
-            height: pl.preferred-height + 8px;
+            height: min(pl.preferred-height + 8px, max(120px, PopupLimit.window-height - pc.absolute-position.y - 32px - 12px));
             PopupSurface {
+              Flickable {
+                content-height: pl.preferred-height + 8px;
                 pl := VerticalLayout {
+                    width: parent.width;
                     padding: 6px;
                     spacing: 1px;
                     SectionLabel { text: "プロジェクトを選択"; }
@@ -509,10 +522,11 @@ export component LocationRow inherits HorizontalLayout {
                         picked => { root.pick-project(i); ppop.close(); }
                     }
                     MenuItem {
-                        item: { label: "別のフォルダを選択…", desc: "", selected: false, disabled: false, locked: false };
+                        item: { label: "フォルダを追加…", desc: "", selected: false, disabled: false, locked: false };
                         picked => { ppop.close(); root.choose-folder(); }
                     }
                 }
+              }
             }
         }
     }

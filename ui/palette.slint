@@ -104,6 +104,8 @@ export component PaletteOverlay inherits Rectangle {
                     Rectangle {
                     horizontal-stretch: 1;
                     input := TextInput {
+                        selection-foreground-color: Theme.fg;
+                        selection-background-color: #4d8ff566;
                         width: parent.width;
                         height: parent.height;
                         text <=> PaletteState.query;

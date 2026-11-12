@@ -26,6 +26,8 @@ pub(crate) struct State {
     pub(crate) allowed_sandboxes: Option<Vec<String>>,
     /// Project folders offered by the project picker, in row order.
     pub(crate) project_cwds: Vec<String>,
+    /// Folders of the server's projects (project/list, project/create), offered by the picker too.
+    pub(crate) server_projects: Vec<String>,
     /// Models found only by probing newer client versions ("unverified").
     pub(crate) extra: Vec<ModelInfo>,
     pub(crate) prefs: Prefs,

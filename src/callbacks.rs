@@ -253,6 +253,7 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
     app.global::<AppState>().on_new_chat_in(move |cwd| h.send(Command::NewThreadIn(cwd.to_string())));
     let h = handle.clone();
     app.global::<AppState>().on_switch_transport(move || h.send(Command::SwitchTransport));
+    crate::projects::register(handle);
     crate::coding::register(app, handle);
     crate::chat_md::register(app);
     crate::git_panel::register(app, handle);

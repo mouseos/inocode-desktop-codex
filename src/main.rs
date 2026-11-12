@@ -23,6 +23,7 @@ mod metrics;
 mod nav;
 mod palette;
 mod panel_data;
+mod projects;
 mod prompts;
 mod reply;
 mod settings_page;

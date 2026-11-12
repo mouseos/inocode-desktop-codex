@@ -42,3 +42,8 @@ export global Theme {
     out property <string> font-sans: "Segoe UI";
     out property <string> font-serif: "Georgia";
 }
+
+// The height of the window, for the popups that must stay inside it (set by the window).
+export global PopupLimit {
+    in-out property <length> window-height: 760px;
+}

@@ -1,4 +1,4 @@
-import { Theme } from "theme.slint";
+import { Theme, PopupLimit } from "theme.slint";
 import { Icon, Glyph } from "icons.slint";
 
 // The parts of a settings page (Claude Desktop's settings): a heading per section and, under it,
@@ -51,12 +51,16 @@ export component Dropdown inherits Rectangle {
         x: 0px;
         y: root.height + 2px;
         width: root.width;
+        height: min(root.options.length * 30px + 8px, max(60px, PopupLimit.window-height - root.absolute-position.y - root.height - 2px - 12px));
         Rectangle {
             background: Theme.composer;
             border-radius: Theme.radius-row;
             border-width: 1px;
             border-color: Theme.border;
-            VerticalLayout {
+            Flickable {
+              content-height: root.options.length * 30px + 8px;
+              VerticalLayout {
+                width: parent.width;
                 padding: 4px;
                 for o[i] in root.options: Rectangle {
                     height: 30px;
@@ -65,6 +69,7 @@ export component Dropdown inherits Rectangle {
                     Text { x: 10px; text: o; color: o == root.current ? Theme.accent : Theme.fg; font-size: 13px; vertical-alignment: center; }
                     oa := TouchArea { clicked => { root.selected(i); } }
                 }
+              }
             }
         }
     }

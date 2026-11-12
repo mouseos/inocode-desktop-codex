@@ -96,7 +96,7 @@ export component MenuOverlay inherits Rectangle {
             x: max(4px, min(SidebarState.menu-x, root.width - self.width - 4px));
             y: SidebarState.menu-up ? max(4px, SidebarState.menu-y - self.height) : max(4px, min(SidebarState.menu-y, root.height - self.height - 4px));
             width: 224px;
-            height: col.preferred-height + 8px;
+            height: min(col.preferred-height + 8px, root.height - 8px);
             border-radius: 10px;
             background: Theme.composer;
             border-width: 1px;
@@ -104,7 +104,10 @@ export component MenuOverlay inherits Rectangle {
             drop-shadow-blur: 16px;
             drop-shadow-color: #00000033;
             TouchArea { }
-            col := VerticalLayout {
+            Flickable {
+              content-height: col.preferred-height + 8px;
+              col := VerticalLayout {
+                width: parent.width;
                 padding: 4px;
                 for item in SidebarState.menu-items: MenuRow {
                     item: item;
@@ -113,6 +116,7 @@ export component MenuOverlay inherits Rectangle {
                         SidebarState.menu-pick(item.id);
                     }
                 }
+              }
             }
         }
     }

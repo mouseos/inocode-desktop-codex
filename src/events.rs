@@ -102,7 +102,10 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
         Event::RateLimits(text) => app.global::<AppState>().set_rate_text(text.into()),
         // The sidebar owns the list request (sort, filter, paging), so a list the client reloaded
         // on its own only triggers a refresh with the sidebar's own parameters.
-        Event::Threads(_) => crate::sidebar::refresh(),
+        Event::Threads(_) => {
+            crate::sidebar::refresh();
+            crate::projects::request_list();
+        }
         Event::ThreadActive { id, title } => {
             crate::sidebar::on_thread_active(&id);
             crate::metrics::reset(app);
@@ -266,6 +269,7 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
             crate::models_enrich::on_rpc(app, &tag, &result);
             crate::prompts::on_rpc(app, &tag, &result);
             crate::attach::on_rpc(app, &tag, &result);
+            crate::projects::on_rpc(app, &tag, &result);
             crate::panel_data::on_rpc(app, &tag, &result);
             crate::settings_page::on_rpc(app, &tag, &result);
             crate::accounts_page::on_rpc(app, &tag, &result);
