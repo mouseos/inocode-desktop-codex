@@ -1,6 +1,7 @@
 import { Theme, PopupLimit } from "theme.slint";
 import { Icon, Glyph } from "icons.slint";
 import { IconButton } from "widgets.slint";
+import { CompareState } from "compare.slint";
 
 // Composer pickers laid out like the desktop client's: an "intelligence" dropdown
 // (effort, speed, model list, Daybreak), a permission dropdown with a Full access
@@ -100,6 +101,27 @@ component MenuItem inherits Rectangle {
             }
         }
     }
+}
+
+// A model of the picker: the name and, at the right, what it costs (one line).
+component ModelItem inherits Rectangle {
+    in property <MenuRow> item;
+    callback picked;
+    height: 28px;
+    border-radius: 6px;
+    background: ta.has-hover ? Theme.hover : transparent;
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 8px;
+        spacing: 6px;
+        Text { text: root.item.label; color: Theme.fg; font-size: 13px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+        Text { text: root.item.desc; color: Theme.fg-tertiary; font-size: 11px; vertical-alignment: center; }
+        Rectangle {
+            width: 16px;
+            if root.item.selected: Icon { text: "\u{e5ca}"; font-size: 16px; color: Theme.fg; }
+        }
+    }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.picked(); } }
 }
 
 component PopupSurface inherits Rectangle {
@@ -287,32 +309,20 @@ export component IntelligenceMenu inherits Rectangle {
                     }
                 }
 
-                // The use the models are narrowed and ordered by (two rows of chips).
-                if root.state.uses-a.length > 1: HorizontalLayout {
-                    spacing: 4px;
-                    alignment: start;
-                    for u[i] in root.state.uses-a: Rectangle {
-                        height: 24px;
-                        width: ua.preferred-width + 16px;
-                        border-radius: 12px;
-                        background: i == root.state.use-index ? Theme.fg : Theme.hover;
-                        ua := Text { text: u; color: i == root.state.use-index ? Theme.surface : Theme.fg; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
-                        TouchArea { mouse-cursor: pointer; clicked => { root.pick-use(i); } }
+                HorizontalLayout {
+                    SectionLabel { text: "モデルを選択"; horizontal-stretch: 1; }
+                    IconButton {
+                        glyph: "\u{e265}";
+                        icon-size: 14px;
+                        box-size: 22px;
+                        y: 1px;
+                        clicked => {
+                            pop.close();
+                            CompareState.open = true;
+                            CompareState.opened();
+                        }
                     }
                 }
-                if root.state.uses-b.length > 0: HorizontalLayout {
-                    spacing: 4px;
-                    alignment: start;
-                    for u[i] in root.state.uses-b: Rectangle {
-                        height: 24px;
-                        width: ub.preferred-width + 16px;
-                        border-radius: 12px;
-                        background: i + 4 == root.state.use-index ? Theme.fg : Theme.hover;
-                        ub := Text { text: u; color: i + 4 == root.state.use-index ? Theme.surface : Theme.fg; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
-                        TouchArea { mouse-cursor: pointer; clicked => { root.pick-use(i + 4); } }
-                    }
-                }
-                SectionLabel { text: "モデルを選択"; }
                 if root.state.loading: Text {
                     text: "モデルを読み込み中…";
                     color: Theme.fg-tertiary;
@@ -328,20 +338,20 @@ export component IntelligenceMenu inherits Rectangle {
                     content-height: rows.preferred-height;
                     rows := VerticalLayout {
                         width: parent.width;
-                        for r[i] in root.state.models: MenuItem {
-                            item: r;
-                            indent: !r.heading;
-                            picked => { root.pick-model(i); }
+                        for r[i] in root.state.models: Rectangle {
+                            height: 28px;
+                            if r.heading: MenuItem {
+                                item: r;
+                                picked => { root.pick-model(i); }
+                            }
+                            if !r.heading: ModelItem {
+                                item: r;
+                                picked => { root.pick-model(i); }
+                            }
                         }
                     }
                 }
 
-                if root.state.credit != "": Text {
-                    text: root.state.credit;
-                    color: Theme.fg-tertiary;
-                    font-size: 10px;
-                    wrap: word-wrap;
-                }
                 if root.state.effort-enabled: Separator { }
                 if root.state.effort-enabled: Rectangle {
                     height: 28px;

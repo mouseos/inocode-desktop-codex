@@ -1,0 +1,348 @@
+import { Theme } from "theme.slint";
+import { Icon, Glyph } from "icons.slint";
+import { IconButton } from "widgets.slint";
+import { Dropdown } from "setting_rows.slint";
+
+// "モデルを比較": the models as a table (provider and model stay at the left while the other columns
+// scroll sideways), sorted by a click on a heading, narrowed by the filters above it.
+// Design: ref/docs/63-model-picker-redesign.md, ref/mockups/model-picker/index.html.
+
+export struct CmpRow {
+    provider: string,
+    model: string,
+    price: string,
+    rank: string,
+    general: string,
+    coding: string,
+    agentic: string,
+    reasoning: string,
+    ctx: string,
+    speed: string,
+    picked: bool,
+}
+
+export struct CmpChip {
+    label: string,
+    on: bool,
+}
+
+export global CompareState {
+    in-out property <bool> open: false;
+    in property <[CmpRow]> rows;
+    in property <[CmpChip]> provider-chips;
+    in property <bool> free-only: false;
+    in property <[string]> price-options;
+    in property <[string]> rank-options;
+    in property <[string]> code-options;
+    in property <string> price-current;
+    in property <string> rank-current;
+    in property <string> code-current;
+    // The column that orders the rows and the direction (true: descending)
+    in property <string> sort-key: "r";
+    in property <bool> sort-desc: false;
+    in property <string> credit;
+    in property <bool> can-use: false;
+    callback opened;
+    callback sort(string);
+    callback search(string);
+    callback toggle-provider(int);
+    callback toggle-free;
+    callback pick-filter(string, int);
+    callback row-clicked(int);
+    callback use-picked;
+}
+
+// A heading cell: the name, the unit under it, and the arrow of the column that orders the rows.
+component HeadCell inherits Rectangle {
+    in property <string> key;
+    in property <string> title;
+    in property <string> unit;
+    in property <bool> align-right: false;
+    height: 44px;
+    background: Theme.surface;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 2px;
+        alignment: root.align-right ? LayoutAlignment.end : LayoutAlignment.start;
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: root.title;
+                color: ta.has-hover || CompareState.sort-key == root.key ? Theme.fg : Theme.fg-secondary;
+                font-size: 12px;
+                font-weight: 600;
+                horizontal-alignment: root.align-right ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            }
+            if root.unit != "": Text {
+                text: root.unit;
+                color: Theme.fg-tertiary;
+                font-size: 10px;
+                horizontal-alignment: root.align-right ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            }
+        }
+        if CompareState.sort-key == root.key: Icon {
+            width: 14px;
+            text: CompareState.sort-desc ? Glyph.expand-more : Glyph.expand-less;
+            font-size: 14px;
+            color: Theme.fg;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { CompareState.sort(root.key); }
+    }
+}
+
+component Cell inherits Rectangle {
+    in property <string> text;
+    in property <bool> align-right: false;
+    in property <int> weight: 400;
+    Text {
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        text: root.text;
+        color: root.text == "—" ? Theme.fg-tertiary : Theme.fg;
+        font-size: 13px;
+        font-weight: root.weight;
+        vertical-alignment: center;
+        horizontal-alignment: root.align-right ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+        overflow: elide;
+    }
+}
+
+component FilterChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> on;
+    callback clicked;
+    height: 24px;
+    width: t.preferred-width + 20px;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: root.on ? transparent : Theme.border;
+    background: root.on ? Theme.pressed : ta.has-hover ? Theme.hover : transparent;
+    t := Text { text: root.label; color: root.on ? Theme.fg : Theme.fg-secondary; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+component Button inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: 28px;
+    width: t.preferred-width + 24px;
+    border-radius: Theme.radius-row;
+    opacity: root.enabled ? 1 : 0.4;
+    background: root.primary ? (ta.has-hover && root.enabled ? Theme.fg-secondary : Theme.fg) : (ta.has-hover && root.enabled ? Theme.pressed : Theme.selected);
+    t := Text { text: root.label; color: root.primary ? Theme.surface : Theme.fg; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+    ta := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+export component CompareModal inherits Rectangle {
+    // The widths of the columns: provider and model are fixed at the left, the rest scrolls.
+    property <length> w-price: 150px;
+    property <length> w-rank: 110px;
+    property <length> w-general: 90px;
+    property <length> w-coding: 110px;
+    property <length> w-agentic: 110px;
+    property <length> w-reasoning: 90px;
+    property <length> w-ctx: 90px;
+    property <length> w-speed: 90px;
+    property <length> w-left: 104px + 190px;
+    property <length> w-right: root.w-price + root.w-rank + root.w-general + root.w-coding + root.w-agentic + root.w-reasoning + root.w-ctx + root.w-speed;
+
+    background: #00000066;
+    TouchArea { }
+    Rectangle {
+        width: min(1120px, parent.width - 48px);
+        height: min(720px, parent.height - 48px);
+        border-radius: 12px;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 32px;
+        drop-shadow-color: #00000066;
+        VerticalLayout {
+            // title
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 16px;
+                padding-top: 14px;
+                padding-bottom: 8px;
+                Text { text: "モデルを比較"; color: Theme.fg; font-size: 18px; font-family: Theme.font-serif; vertical-alignment: center; horizontal-stretch: 1; }
+                IconButton { glyph: Glyph.close; clicked => { CompareState.open = false; } }
+            }
+            // filters
+            VerticalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-bottom: 10px;
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    Rectangle {
+                        width: 200px;
+                        height: 30px;
+                        border-radius: 6px;
+                        background: Theme.selected;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            spacing: 6px;
+                            Icon { width: 16px; text: Glyph.search; font-size: 14px; color: Theme.fg-tertiary; }
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                fq := TextInput {
+                                    x: 0px;
+                                    y: 0px;
+                                    width: parent.width;
+                                    height: parent.height;
+                                    vertical-alignment: center;
+                                    font-size: 12px;
+                                    color: Theme.fg;
+                                    selection-foreground-color: Theme.fg;
+                                    selection-background-color: #4d8ff566;
+                                    single-line: true;
+                                    edited => { CompareState.search(self.text); }
+                                }
+                                if fq.text == "" && fq.preedit-text == "": Text {
+                                    x: 0px;
+                                    width: parent.width;
+                                    horizontal-alignment: left;
+                                    height: parent.height;
+                                    text: "モデルを検索";
+                                    color: Theme.fg-tertiary;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                        TouchArea { mouse-cursor: MouseCursor.text; clicked => { fq.focus(); } }
+                    }
+                    for c[i] in CompareState.provider-chips: FilterChip {
+                        label: c.label;
+                        on: c.on;
+                        y: 3px;
+                        clicked => { CompareState.toggle-provider(i); }
+                    }
+                    Rectangle { width: 1px; height: 18px; y: 6px; background: Theme.border; }
+                    FilterChip { y: 3px; label: "無料のみ"; on: CompareState.free-only; clicked => { CompareState.toggle-free(); } }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: start;
+                    Text { text: "料金"; color: Theme.fg-secondary; font-size: 12px; vertical-alignment: center; }
+                    Dropdown { options: CompareState.price-options; current: CompareState.price-current; selected(i) => { CompareState.pick-filter("price", i); } }
+                    Text { text: "総合順位"; color: Theme.fg-secondary; font-size: 12px; vertical-alignment: center; }
+                    Dropdown { options: CompareState.rank-options; current: CompareState.rank-current; selected(i) => { CompareState.pick-filter("rank", i); } }
+                    Text { text: "コーディング"; color: Theme.fg-secondary; font-size: 12px; vertical-alignment: center; }
+                    Dropdown { options: CompareState.code-options; current: CompareState.code-current; selected(i) => { CompareState.pick-filter("code", i); } }
+                }
+            }
+            Rectangle { height: 1px; background: Theme.border; }
+            // headings (fixed at the top; their right part follows the sideways scroll of the rows)
+            HorizontalLayout {
+                height: 44px;
+                Rectangle {
+                    width: root.w-left;
+                    HorizontalLayout {
+                        HeadCell { width: 104px; key: "pv"; title: "プロバイダ"; }
+                        HeadCell { width: 190px; key: "n"; title: "モデル"; }
+                    }
+                    Rectangle { x: parent.width - 1px; width: 1px; background: Theme.border; }
+                }
+                headr := Flickable {
+                    interactive: false;
+                    content-width: root.w-right;
+                    content-x <=> bodyr.content-x;
+                    HorizontalLayout {
+                        width: root.w-right;
+                        HeadCell { width: root.w-price; key: "pr"; title: "料金"; unit: "入力 / 出力 ($/100万)"; }
+                        HeadCell { width: root.w-rank; key: "r"; title: "総合順位"; unit: "AA Intelligence"; align-right: true; }
+                        HeadCell { width: root.w-general; key: "g"; title: "一般"; unit: "AA Intelligence"; align-right: true; }
+                        HeadCell { width: root.w-coding; key: "c"; title: "コーディング"; unit: "LiveBench Coding"; align-right: true; }
+                        HeadCell { width: root.w-agentic; key: "a"; title: "エージェント"; unit: "LiveBench Agentic"; align-right: true; }
+                        HeadCell { width: root.w-reasoning; key: "s"; title: "推論"; unit: "GPQA Diamond"; align-right: true; }
+                        HeadCell { width: root.w-ctx; key: "x"; title: "文脈長"; align-right: true; }
+                        HeadCell { width: root.w-speed; key: "v"; title: "速度"; unit: "tok/s"; align-right: true; }
+                    }
+                }
+            }
+            Rectangle { height: 1px; background: Theme.border; }
+            // rows
+            Flickable {
+                vertical-stretch: 1;
+                content-height: body.preferred-height;
+                body := HorizontalLayout {
+                    width: parent.width;
+                    height: max(self.preferred-height, parent.height);
+                    // fixed part
+                    VerticalLayout {
+                        width: root.w-left;
+                        alignment: start;
+                        for r[i] in CompareState.rows: Rectangle {
+                            height: 34px;
+                            background: r.picked ? Theme.selected : lta.has-hover ? Theme.hover : Theme.surface;
+                            HorizontalLayout {
+                                Cell { width: 104px; text: r.provider; }
+                                Cell { width: 190px; text: r.model; weight: 500; }
+                            }
+                            lta := TouchArea {
+                                clicked => { CompareState.row-clicked(i); }
+                                double-clicked => { CompareState.row-clicked(i); CompareState.use-picked(); }
+                            }
+                        }
+                    }
+                    bodyr := Flickable {
+                        content-width: root.w-right;
+                        content-height: CompareState.rows.length * 34px;
+                        VerticalLayout {
+                            width: root.w-right;
+                            alignment: start;
+                            for r[i] in CompareState.rows: Rectangle {
+                                height: 34px;
+                                background: r.picked ? Theme.selected : rta.has-hover ? Theme.hover : Theme.surface;
+                                HorizontalLayout {
+                                    Cell { width: root.w-price; text: r.price; }
+                                    Cell { width: root.w-rank; text: r.rank; align-right: true; }
+                                    Cell { width: root.w-general; text: r.general; align-right: true; }
+                                    Cell { width: root.w-coding; text: r.coding; align-right: true; }
+                                    Cell { width: root.w-agentic; text: r.agentic; align-right: true; }
+                                    Cell { width: root.w-reasoning; text: r.reasoning; align-right: true; }
+                                    Cell { width: root.w-ctx; text: r.ctx; align-right: true; }
+                                    Cell { width: root.w-speed; text: r.speed; align-right: true; }
+                                }
+                                rta := TouchArea {
+                                    clicked => { CompareState.row-clicked(i); }
+                                    double-clicked => { CompareState.row-clicked(i); CompareState.use-picked(); }
+                                }
+                            }
+                        }
+                    }
+                }
+                if CompareState.rows.length == 0: Text {
+                    y: 40px;
+                    width: parent.width;
+                    text: "条件に合うモデルはありません";
+                    color: Theme.fg-tertiary;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                }
+            }
+            Rectangle { height: 1px; background: Theme.border; }
+            // footer
+            HorizontalLayout {
+                padding: 12px;
+                padding-left: 20px;
+                padding-right: 20px;
+                spacing: 8px;
+                Text { text: CompareState.credit; color: Theme.fg-tertiary; font-size: 10px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                Button { label: "閉じる"; clicked => { CompareState.open = false; } }
+                Button { label: "このモデルを使う"; primary: true; enabled: CompareState.can-use; clicked => { CompareState.use-picked(); } }
+            }
+        }
+    }
+}

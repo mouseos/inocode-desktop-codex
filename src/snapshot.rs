@@ -239,6 +239,18 @@ pub(crate) fn install(app: &AppWindow) {
         });
         extra.push(t);
     }
+    // INOCODE_GUI_OPEN=compare opens the table of the models.
+    if std::env::var("INOCODE_GUI_OPEN").as_deref() == Ok("compare") {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay.saturating_sub(4).max(2)), move || {
+            if let Some(app) = weak.upgrade() {
+                app.global::<CompareState>().set_open(true);
+                app.global::<CompareState>().invoke_opened();
+            }
+        });
+        extra.push(t);
+    }
     if std::env::var("INOCODE_GUI_OPEN").as_deref() == Ok("picker") {
         let weak = app.as_weak();
         let t = slint::Timer::default();
@@ -251,7 +263,7 @@ pub(crate) fn install(app: &AppWindow) {
     }
     // INOCODE_GUI_OPEN opens a screen of the settings first: settings:<section> | provider:<id> |
     // account:<provider>:<account id> | history:<provider>:<account id> | add
-    if let Ok(what) = std::env::var("INOCODE_GUI_OPEN").map(|w| if w == "picker" { String::new() } else { w }).and_then(|w| if w.is_empty() { Err(std::env::VarError::NotPresent) } else { Ok(w) }) {
+    if let Ok(what) = std::env::var("INOCODE_GUI_OPEN").map(|w| if w == "picker" || w == "compare" { String::new() } else { w }).and_then(|w| if w.is_empty() { Err(std::env::VarError::NotPresent) } else { Ok(w) }) {
         let weak = app.as_weak();
         let first = slint::Timer::default();
         let w1 = what.clone();

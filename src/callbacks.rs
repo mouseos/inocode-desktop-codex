@@ -272,6 +272,7 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
     let h = handle.clone();
     app.global::<AppState>().on_switch_transport(move || h.send(Command::SwitchTransport));
     crate::projects::register(handle);
+    crate::compare::register(app);
     crate::coding::register(app, handle);
     crate::chat_md::register(app);
     crate::git_panel::register(app, handle);

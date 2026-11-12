@@ -4,6 +4,7 @@ mod chat_actions;
 mod chat_cmds;
 mod os_notify;
 mod chat_md;
+mod compare;
 mod coding;
 mod client;
 mod accounts_page;

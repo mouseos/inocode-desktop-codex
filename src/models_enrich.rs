@@ -37,6 +37,8 @@ pub(crate) struct Enrich {
     pub(crate) price_text: String,
     /// The output price in USD per million tokens, to put the cheap first.
     pub(crate) price_out: Option<f64>,
+    /// The price as the picker and the table show it: "$10 / $50", "無料", "Theos 3 / 回".
+    pub(crate) price_plain: String,
 }
 
 /// The uses of the filter, in the order shown: (key, label). "price" is the order by price.
@@ -148,7 +150,13 @@ pub(crate) fn parse(v: &Value) -> (HashMap<(String, String), Enrich>, Vec<String
             price_text = "Theos 消費".to_string();
             price_out = None;
         }
-        out.insert(key, Enrich { scores, price_text, price_out });
+        let price_plain = ["参考 ", "設定 ", "実測 "]
+            .iter()
+            .find_map(|label| price_text.strip_prefix(label))
+            .unwrap_or(&price_text)
+            .trim_end_matches("(上限)")
+            .to_string();
+        out.insert(key, Enrich { scores, price_text, price_out, price_plain });
     }
     let credits = v
         .get("sources")
@@ -208,35 +216,9 @@ fn value_text(s: &Score) -> String {
     }
 }
 
-/// The second line of a model's row: how it ranks for the chosen use, and the price.
+/// What the picker shows at the right of a model: its price (the ranks are in the table).
 pub(crate) fn describe(st: &State, m: &ModelInfo) -> String {
-    let own = st.enrich.get(&(m.provider.clone(), m.id.clone()));
-    let scores = scores_of(st, m);
-    if own.is_none() && scores.is_empty() {
-        return String::new();
-    }
-    let mut parts: Vec<String> = Vec::new();
-    // The order of "総合順位" mixes the providers: the row says which provider it runs on.
-    if st.use_filter.as_deref() == Some("general") {
-        parts.push(crate::settings_page::provider_name(&m.provider));
-    }
-    if let Some(u) = st.use_filter.as_deref().filter(|u| *u != "price") {
-        let best = scores.iter().filter(|s| s.use_ == u && s.rank > 0).min_by_key(|s| s.rank);
-        parts.push(match best {
-            Some(s) => format!("{} {}位 / {} · {}", use_label(u), s.rank, s.n, value_text(s)),
-            None => format!("{} 未測定", use_label(u)),
-        });
-    }
-    // The overall rank (the best of the metrics of "general"), on every row that has one.
-    if st.use_filter.as_deref() != Some("general") {
-        if let Some(s) = scores.iter().filter(|s| s.use_ == "general" && s.rank > 0).min_by_key(|s| s.rank) {
-            parts.push(format!("総合 {}位 / {}", s.rank, s.n));
-        }
-    }
-    if let Some(e) = own.filter(|e| !e.price_text.is_empty()) {
-        parts.push(e.price_text.clone());
-    }
-    parts.join(" · ")
+    st.enrich.get(&(m.provider.clone(), m.id.clone())).map(|e| e.price_plain.clone()).unwrap_or_default()
 }
 
 /// Ask for what is known of the models of the picker (when they changed).
@@ -276,6 +258,7 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
         st.use_map = uses;
         refresh_pickers(app, &st);
     });
+    crate::compare::refresh_if_open(app);
 }
 
 #[cfg(test)]
