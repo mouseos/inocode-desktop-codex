@@ -259,10 +259,9 @@ export component IntelligenceMenu inherits Rectangle {
         width: 300px;
         height: min(lay.preferred-height + 8px, max(120px, root.absolute-position.y - 16px));
         PopupSurface {
-          Flickable {
-            content-height: lay.preferred-height + 8px;
+            // The search box (top) and the reasoning bar (bottom) stay; only the list of models
+            // scrolls, and it gets shorter when the window is low.
             lay := VerticalLayout {
-                width: parent.width;
                 padding: 6px;
                 spacing: 1px;
 
@@ -334,7 +333,9 @@ export component IntelligenceMenu inherits Rectangle {
                 Flickable {
                     // The rows with a second line (rank, price) are taller than 28px: the height
                     // is the rows' own, or the end of the list is cut off and out of reach.
-                    height: min(rows.preferred-height, 224px);
+                    min-height: 56px;
+                    preferred-height: min(rows.preferred-height, 224px);
+                    vertical-stretch: 1;
                     content-height: rows.preferred-height;
                     rows := VerticalLayout {
                         width: parent.width;
@@ -390,7 +391,6 @@ export component IntelligenceMenu inherits Rectangle {
                     vertical-alignment: center;
                 }
             }
-          }
         }
     }
 }
