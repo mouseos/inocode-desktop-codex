@@ -172,6 +172,12 @@ export global AccountsState {
     callback back;
     callback choose-setting(string, int);
     callback make-default;
+    // The models of the open provider are read again; a provider of the config is edited or removed
+    callback reload-models;
+    callback edit-provider;
+    callback remove-provider(string);
+    // The provider being edited with the form of step 3 (empty: a new one)
+    in-out property <string> edit-id;
     callback use-credit(string, string);
     callback open-history(string);
     callback close-history;
@@ -373,7 +379,7 @@ component AddDialog inherits Rectangle {
                         accepted(t) => { AccountsState.add-compatible(); }
                     }
                     Chip { label: AccountsState.show-key ? "隠す" : "表示"; clicked => { AccountsState.show-key = !AccountsState.show-key; } }
-                    Chip { label: "追加"; active: true; clicked => { AccountsState.add-compatible(); } }
+                    Chip { label: AccountsState.edit-id != "" ? "保存" : "追加"; active: true; clicked => { AccountsState.add-compatible(); } }
                 }
                 if AccountsState.login-note != "": Text { text: AccountsState.login-note; color: Theme.fg-secondary; font-size: 12px; wrap: word-wrap; }
             }
@@ -460,6 +466,18 @@ export component AccountsView inherits Rectangle {
                     GroupTitle { text: "接続先"; }
                     Group {
                         if AccountsState.endpoint-url != "": Row { label: "base URL"; value: AccountsState.endpoint-url; clickable: false; }
+                        if !AccountsState.pooled: Row { label: "編集"; chevron: true; clicked => { AccountsState.edit-provider(); } }
+                        if !AccountsState.pooled: Row {
+                            label: AccountsState.confirm-id == "prov:" + AccountsState.provider-id ? "削除する(設定から消えます)" : "このプロバイダーを削除";
+                            danger: true;
+                            clicked => {
+                                if AccountsState.confirm-id == "prov:" + AccountsState.provider-id {
+                                    AccountsState.remove-provider(AccountsState.provider-id);
+                                } else {
+                                    AccountsState.confirm-id = "prov:" + AccountsState.provider-id;
+                                }
+                            }
+                        }
                         Row {
                             label: AccountsState.is-default ? "既定のプロバイダー" : "既定にする";
                             value: AccountsState.is-default ? "✓" : "";
@@ -496,6 +514,7 @@ export component AccountsView inherits Rectangle {
                 }
                 Group {
                     if AccountsState.pooled: Row { label: "アカウントを追加"; chevron: true; clicked => { AccountsState.begin(""); } }
+                    Row { label: "モデルを再読み込み"; clicked => { AccountsState.reload-models(); } }
                     if AccountsState.cards.length > 1: Row {
                         label: "並べ替え";
                         sub: "上から順に使います。";

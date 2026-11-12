@@ -11,6 +11,12 @@ thread_local! {
     static HANDLE: RefCell<Option<Rc<client::Handle>>> = const { RefCell::new(None) };
 }
 
+thread_local! {
+    /// The providers of config.toml that are not of the account pool (a custom OpenAI-compatible
+    /// one): they have no account, yet their models are listed.
+    static CUSTOM: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
 pub(crate) fn register(handle: &Rc<client::Handle>) {
     HANDLE.with(|c| *c.borrow_mut() = Some(handle.clone()));
 }
@@ -47,9 +53,11 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
                 providers.push(p.to_string());
             }
         }
-        // A provider without an account has no section.
-        STATE.with(|s| s.borrow_mut().provider_models.retain(|k, _| providers.contains(k)));
+        // A provider without an account has no section, unless it is one of the config.
+        let custom = CUSTOM.with(|c| c.borrow().clone());
+        STATE.with(|s| s.borrow_mut().provider_models.retain(|k, _| providers.contains(k) || custom.contains(k)));
         if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
+            h.send(Command::Rpc { tag: "model.mp".into(), method: "modelProvider/list".into(), params: json!({}) });
             for p in &providers {
                 h.send(Command::Rpc {
                     tag: format!("model.list:{p}"),
@@ -59,6 +67,30 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
             }
         }
         STATE.with(|s| refresh_pickers(app, &s.borrow()));
+        return;
+    }
+    if tag == "model.mp" {
+        let Ok(v) = result else { return };
+        // The providers of the config that the pool does not know (the built-in ones have their own lists).
+        let ids: Vec<String> = v
+            .get("data")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|p| p.get("id").and_then(Value::as_str))
+            .filter(|id| !id.is_empty() && !matches!(*id, "openai" | "claude" | "anthropic" | "deepai"))
+            .map(str::to_string)
+            .collect();
+        CUSTOM.with(|c| *c.borrow_mut() = ids.clone());
+        if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
+            for p in &ids {
+                h.send(Command::Rpc {
+                    tag: format!("model.list:{p}"),
+                    method: "model/list".into(),
+                    params: json!({ "modelProvider": p, "includeHidden": true, "cursor": null, "limit": 100 }),
+                });
+            }
+        }
         return;
     }
     if let Some(p) = tag.strip_prefix("model.list:") {

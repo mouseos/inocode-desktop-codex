@@ -1020,17 +1020,52 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
             }
         }
     });
+    st.on_reload_models(|| crate::model_init::refresh_providers());
+    let weak = app.as_weak();
+    st.on_edit_provider(move || {
+        let Some(app) = weak.upgrade() else { return };
+        let st = app.global::<AccountsState>();
+        let pid = st.get_provider_id().to_string();
+        let (name, url) = DATA.with(|d| d.borrow().endpoints.iter().find(|e| e.0 == pid).map(|e| (e.1.clone(), e.2.clone())).unwrap_or_default());
+        st.set_edit_id(pid.into());
+        st.set_np_name(name.into());
+        st.set_np_url(url.into());
+        st.set_np_env("".into());
+        st.set_np_key("".into());
+        st.set_login_note("".into());
+        st.set_add_title("プロバイダーを編集".into());
+        st.set_add_step(3);
+    });
+    let weak = app.as_weak();
+    st.on_remove_provider(move |id| {
+        let Some(app) = weak.upgrade() else { return };
+        let st = app.global::<AccountsState>();
+        st.set_confirm_id("".into());
+        // null removes the key from config.toml
+        crate::settings_page::write_config(&format!("model_providers.{id}"), Value::Null);
+        st.set_provider_id("".into());
+        st.set_account_id("".into());
+        note(&app, "プロバイダーを削除しました");
+        reload_endpoints();
+        crate::model_init::refresh_providers();
+    });
     let weak = app.as_weak();
     st.on_add_compatible(move || {
         let Some(app) = weak.upgrade() else { return };
         let st = app.global::<AccountsState>();
         let (name, url) = (st.get_np_name().trim().to_string(), st.get_np_url().trim().to_string());
         let (env, key) = (st.get_np_env().trim().to_string(), st.get_np_key().trim().to_string());
-        if name.is_empty() || url.is_empty() || (env.is_empty() && key.is_empty()) {
+        let editing = st.get_edit_id().to_string();
+        // Editing: an empty key field keeps the key the provider has.
+        if name.is_empty() || url.is_empty() || (editing.is_empty() && env.is_empty() && key.is_empty()) {
             login_note(&app, "名前、base URL、API キー(環境変数名か値)を入力してください");
             return;
         }
         let mut cfg = json!({ "name": name, "base_url": url, "wire_api": "responses", "requires_openai_auth": false });
+        if !editing.is_empty() {
+            // only what is corrected: the wire format and the rest stay as they are
+            cfg = json!({ "name": name, "base_url": url });
+        }
         if !env.is_empty() {
             cfg["env_key"] = json!(env);
         }
@@ -1039,12 +1074,18 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         }
         // The key leaves the field at once.
         st.set_np_key("".into());
-        crate::settings_page::upsert_config(&format!("model_providers.{}", crate::settings_page::slug(&name)), cfg);
+        let key_path = if editing.is_empty() { format!("model_providers.{}", crate::settings_page::slug(&name)) } else { format!("model_providers.{editing}") };
+        crate::settings_page::upsert_config(&key_path, cfg);
+        st.set_edit_id("".into());
         st.set_np_name("".into());
         st.set_np_url("".into());
         st.set_np_env("".into());
         st.set_add_step(0);
-        note(&app, "プロバイダを追加しました");
+        note(&app, if editing.is_empty() { "プロバイダを追加しました" } else { "プロバイダを保存しました" });
+        if !editing.is_empty() {
+            reload_endpoints();
+            crate::model_init::refresh_providers();
+        }
     });
 }
 
