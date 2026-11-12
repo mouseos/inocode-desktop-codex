@@ -1,0 +1,57 @@
+{
+  "method": "inocode/kb/candidate/list (失敗記録の更新の提案)",
+  "request": {
+    "cwd": "D:\\work\\demo-project"
+  },
+  "response": {
+    "candidates": [
+      {
+        "id": "cand-0003",
+        "kind": "failureCase",
+        "op": "update",
+        "title": "adb shell は fastboot 中に失敗する",
+        "by": "model:thr_01HZX",
+        "at": "2026-11-13T01:20:00Z",
+        "status": "candidate",
+        "requiresApproval": true,
+        "target": {
+          "tab": "knowledge",
+          "sub": "failures",
+          "ref": "adb shell は fastboot 中に失敗する"
+        },
+        "payload": {
+          "title": "adb shell は fastboot 中に失敗する",
+          "body": "…",
+          "projectId": "…",
+          "conditions": "fastboot の最中だった",
+          "conditionsKnown": true,
+          "attempted": "adb shell",
+          "outcome": "exit 1 (again)",
+          "avoid": "…",
+          "cause": null,
+          "source": null,
+          "checkedAt": null,
+          "updates": "failure_case-0001"
+        },
+        "current": {
+          "id": "failure_case-0001",
+          "title": "adb shell は fastboot 中に失敗する",
+          "conditions": "fastboot の最中だった(直前: fastboot flash boot)",
+          "attempted": "adb shell",
+          "outcome": "exit 1: device offline",
+          "avoid": "fastboot の間は adb shell を使わない",
+          "cause": "端末が fastboot モードで、adb に応答しなかった(見立て)",
+          "source": "https://developer.android.com/tools/adb",
+          "checkedAt": "2026-11-13",
+          "status": "verified",
+          "body": "fastboot flash の最中に adb shell を実行したら失敗した。",
+          "stateDependent": null,
+          "worksWhen": null,
+          "updatedAt": "2026-11-13T01:10:00Z",
+          "seen": null
+        }
+      }
+    ]
+  },
+  "note": "kind=failureCase の payload は kb_propose の入力と同じ欄(checked_at は checkedAt、conditions は `unknown` のとき conditions=\"条件不明\" と conditionsKnown=false)+ projectId。op=update のとき payload.updates=相手の記録の ID、current=相手の現在の中身(failure/read の failure と同じ形)。page / fact の更新のときの current は {title, body}。承認(candidate/approve)の応答は {status: registered, id: 登録した記録の ID, target}。failureCase の承認は実装済み(doc 61 の「第 1 版は未対応」は古い)。"
+}

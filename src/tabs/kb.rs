@@ -28,6 +28,10 @@ struct K {
     index: Value,
     prohib: Vec<Value>,
     fails: Vec<Value>,
+    /// 承認済みの失敗の記録と、承認待ちの候補(すべての種類)
+    failures: Vec<Value>,
+    cands: Vec<Value>,
+    extra2_sel: i32,
     legacy: Vec<Value>,
     pages: Vec<Value>,
     /// 読んだページ(題名 -> page/read の応答)
@@ -45,10 +49,13 @@ struct K {
     items: Vec<Value>,
     /// 保存で競合したときの現在の版
     pending_rev: Option<String>,
+    /// カードが指した記録(題): 一覧を読んだら、これを開く
+    pending_ref: Option<String>,
 }
 
 thread_local! {
-    static K: RefCell<K> = RefCell::new(K { sel: -1, extra_sel: -1, ..K::default() });
+    static K: RefCell<K> = RefCell::new(K { sel: -1, extra_sel: -1, extra2_sel: -1, ..K::default() });
+    static HOST: RefCell<Option<Host>> = const { RefCell::new(None) };
 }
 
 // ------------------------------------------------------------------ pure helpers (tested)
@@ -112,6 +119,61 @@ fn relaxed_now(p: &Value) -> bool {
 /// A line of a list is one line: breaks and runs of blanks become a single space.
 fn one_line(t: &str) -> String {
     t.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// "unknown" is written by the model when it does not know the condition: the screen says so.
+fn cond_text(c: &str) -> String {
+    let t = c.trim();
+    if t.is_empty() || t.eq_ignore_ascii_case("unknown") || t == "条件不明" { "不明".to_string() } else { t.to_string() }
+}
+
+fn cand_kind_label(c: &Value) -> String {
+    let base = match s(c, "kind") {
+        "failureCase" | "failure" => "失敗の記録",
+        "checklistItem" => "チェックリストの項目",
+        "overviewAppend" => "概要への追記",
+        "page" => "ページ",
+        "fact" => "事実",
+        _ => "",
+    };
+    if s(c, "op") == "update" { format!("{base} · 更新の提案") } else { base.to_string() }
+}
+
+/// 候補(承認待ち)の行
+fn cand_rows(list: &[Value], sel: i32) -> Vec<KbRow> {
+    list.iter().enumerate().map(|(i, c)| row(s(c, "title"), &cand_kind_label(c), "承認待ち", 1, i as i32 == sel)).collect()
+}
+
+/// 失敗の記録(承認済み・候補)の欄: (見出し, 値)。更新の提案は、前の中身があれば「前 → 後」で出す
+fn failure_fields(rec: &Value, current: Option<&Value>) -> Vec<(&'static str, String)> {
+    let get = |v: &Value, k: &str, k2: &str| -> String {
+        let t = s(v, k);
+        if t.is_empty() { s(v, k2).to_string() } else { t.to_string() }
+    };
+    let fields: [(&'static str, &str, &str); 7] = [
+        ("条件", "conditions", "conditions"),
+        ("実行したこと", "attempted", "attempted"),
+        ("結果", "outcome", "outcome"),
+        ("回避・予防", "avoid", "avoid"),
+        ("原因", "cause", "cause"),
+        ("出典", "source", "source"),
+        ("確認日", "checked_at", "checkedAt"),
+    ];
+    let mut out = Vec::new();
+    for (label, k, k2) in fields {
+        let new = get(rec, k, k2);
+        let old = current.map(|c| get(c, k, k2)).unwrap_or_default();
+        let show = |t: &str| if label == "条件" { cond_text(t) } else { t.to_string() };
+        if !new.is_empty() && !old.is_empty() && new != old {
+            out.push((label, format!("{}\n→ {}", show(&old), show(&new))));
+        } else if !new.is_empty() {
+            out.push((label, show(&new)));
+        } else if label == "条件" {
+            // a failure with no condition at all is shown as unknown, not left blank
+            out.push((label, "不明".to_string()));
+        }
+    }
+    out
 }
 
 fn row(title: &str, sub: &str, end: &str, tone: i32, selected: bool) -> KbRow {
@@ -265,6 +327,8 @@ fn render(app: &AppWindow) {
     let st = app.global::<KbState>();
     let sub = st.get_sub();
     let mut meta: Option<(Vec<&'static str>, Vec<Vec<i32>>)> = None;
+    st.set_extra2_rows(ModelRc::default());
+    st.set_extra2_heading("".into());
     K.with(|k| {
         let k = k.borrow();
         match sub {
@@ -293,19 +357,44 @@ fn render(app: &AppWindow) {
                 st.set_can_new(false);
                 st.set_search_hint("知識を検索".into());
                 st.set_tags(ModelRc::default());
-                st.set_extra_rows(ModelRc::default());
-                let rows: Vec<KbRow> = k.fails.iter().enumerate().map(|(i, f)| row(s(f, "title"), s(f, "symptom"), "未確認", 1, i as i32 == k.sel)).collect();
+                // 承認済みの記録 / 承認待ちの候補 / 旧データ(読み取り専用)
+                let rows: Vec<KbRow> = k
+                    .failures
+                    .iter()
+                    .enumerate()
+                    .map(|(i, f)| {
+                        let confirmed = matches!(s(f, "status"), "confirmed" | "verified" | "registered" | "");
+                        row(s(f, "title"), &cond_text(if s(f, "conditions").is_empty() { "unknown" } else { s(f, "conditions") }), if confirmed { "" } else { "未確認" }, if confirmed { 0 } else { 1 }, i as i32 == k.sel)
+                    })
+                    .collect();
                 st.set_rows(model(rows));
-                match usize::try_from(k.sel).ok().and_then(|i| k.fails.get(i)) {
-                    Some(f) => {
-                        clear_detail(&st);
-                        st.set_has_detail(true);
-                        st.set_d_title(s(f, "title").into());
+                st.set_extra_heading(if k.cands.is_empty() { "" } else { "承認待ち" }.into());
+                st.set_extra_rows(model(cand_rows(&k.cands, k.extra_sel)));
+                st.set_extra2_heading(if k.fails.is_empty() { "" } else { "旧データ" }.into());
+                let legacy: Vec<KbRow> = k.fails.iter().enumerate().map(|(i, f)| row(s(f, "title"), s(f, "symptom"), "未確認", 1, i as i32 == k.extra2_sel)).collect();
+                st.set_extra2_rows(model(legacy));
+                if let Some(c) = usize::try_from(k.extra_sel).ok().and_then(|i| k.cands.get(i)) {
+                    detail_candidate(&st, c);
+                } else if let Some(f) = usize::try_from(k.extra2_sel).ok().and_then(|i| k.fails.get(i)) {
+                    clear_detail(&st);
+                    st.set_has_detail(true);
+                    st.set_d_title(s(f, "title").into());
+                    st.set_d_badge("未確認".into());
+                    st.set_d_badge_tone(1);
+                    st.set_d_kv(model(vec![KbKv { k: "症状".into(), v: s(f, "symptom").into() }]));
+                } else if let Some(f) = usize::try_from(k.sel).ok().and_then(|i| k.failures.get(i)) {
+                    clear_detail(&st);
+                    st.set_has_detail(true);
+                    st.set_d_title(s(f, "title").into());
+                    let confirmed = matches!(s(f, "status"), "confirmed" | "verified" | "registered" | "");
+                    if !confirmed {
                         st.set_d_badge("未確認".into());
                         st.set_d_badge_tone(1);
-                        st.set_d_kv(model(vec![KbKv { k: "症状".into(), v: s(f, "symptom").into() }]));
                     }
-                    None => clear_detail(&st),
+                    st.set_d_body(strs(if s(f, "body").is_empty() { vec![] } else { vec![s(f, "body").to_string()] }));
+                    st.set_d_kv(model(failure_fields(f, None).into_iter().map(|(a, b)| KbKv { k: a.into(), v: b.into() }).collect()));
+                } else {
+                    clear_detail(&st);
                 }
             }
             SUB_COMMON => {
@@ -359,6 +448,48 @@ fn render(app: &AppWindow) {
             k.section_jumps = jumps;
         });
     }
+}
+
+/// 候補(承認待ち)の詳細: 提案の中身と、承認・却下
+fn detail_candidate(st: &KbState<'_>, c: &Value) {
+    clear_detail(st);
+    st.set_has_detail(true);
+    let payload = c.get("payload").cloned().unwrap_or(Value::Null);
+    let current = c.get("current");
+    st.set_d_title(s(c, "title").into());
+    st.set_d_meta(cand_kind_label(c).into());
+    st.set_d_badge("承認待ち".into());
+    st.set_d_badge_tone(1);
+    let mut kv: Vec<KbKv> = Vec::new();
+    match s(c, "kind") {
+        "failureCase" | "failure" => {
+            if let Some(old) = current.map(|o| s(o, "title")).filter(|t| !t.is_empty() && *t != s(c, "title")) {
+                kv.push(KbKv { k: "題".into(), v: format!("{old}\n→ {}", s(c, "title")).into() });
+            }
+            kv.extend(failure_fields(&payload, current).into_iter().map(|(a, b)| KbKv { k: a.into(), v: b.into() }));
+        }
+        "checklistItem" => {
+            if !s(&payload, "role").is_empty() {
+                kv.push(KbKv { k: "担当".into(), v: s(&payload, "role").into() });
+            }
+            kv.push(KbKv { k: "項目".into(), v: s(&payload, "text").into() });
+        }
+        "overviewAppend" => st.set_d_body(strs(vec![s(&payload, "text").to_string()])),
+        _ => {
+            // a page or a fact: the new text, and what it replaces when it is an update
+            let old_title = current.map(|o| s(o, "title")).filter(|t| !t.is_empty() && *t != s(c, "title"));
+            if let Some(old) = old_title {
+                kv.push(KbKv { k: "題".into(), v: format!("{old}
+→ {}", s(c, "title")).into() });
+            }
+            if let Some(old) = current.map(|o| s(o, "body")).filter(|t| !t.is_empty() && *t != s(&payload, "body")) {
+                kv.push(KbKv { k: "前の本文".into(), v: old.into() });
+            }
+            st.set_d_body(strs(paragraphs(s(&payload, "body"))));
+        }
+    }
+    st.set_d_kv(model(kv));
+    st.set_d_acts(model(vec![act("cand-approve", "承認", true), act("cand-reject", "却下", false)]));
 }
 
 fn detail_prohib(st: &KbState<'_>, p: &Value) {
@@ -460,6 +591,13 @@ fn render_overview(app: &AppWindow, k: &K) -> (Vec<&'static str>, Vec<Vec<i32>>)
         kinds.push("unresolved");
         jumps.push(vec![]);
     }
+    // 承認待ちの候補
+    if !k.cands.is_empty() {
+        let n = k.cands.len() as i32;
+        sections.push(KbSection { heading: "承認待ち".into(), rows: model(cand_rows(&k.cands, -1)), chips: ModelRc::default() });
+        kinds.push("cand");
+        jumps.push((0..n).collect());
+    }
     // 最近の失敗の記録
     let recent: Vec<KbRow> = k.fails.iter().take(2).map(|f| row(s(f, "title"), s(f, "symptom"), "未確認", 1, false)).collect();
     if !recent.is_empty() {
@@ -482,12 +620,17 @@ fn refresh(app: &AppWindow, host: &Host) {
             host.rpc("kb.overview", "inocode/kb/overview/read", json!({ "cwd": cwd }));
             host.rpc("kb.index", "inocode/kb/index/get", json!({ "cwd": cwd }));
             host.rpc("kb.fails", "inocode/kb/legacy/failureCases", json!({ "cwd": cwd, "limit": 2, "cursor": Value::Null }));
+            host.rpc("kb.cands", "inocode/kb/candidate/list", json!({ "cwd": cwd }));
         }
         SUB_PROHIB => {
             host.rpc("kb.prohib", "inocode/kb/prohibition/list", json!({ "cwd": cwd, "status": "active" }));
             host.rpc("kb.legacy", "inocode/kb/legacy/rules", json!({ "cwd": cwd }));
         }
-        SUB_FAIL => host.rpc("kb.fails", "inocode/kb/legacy/failureCases", json!({ "cwd": cwd, "limit": 100, "cursor": Value::Null })),
+        SUB_FAIL => {
+            host.rpc("kb.failures", "inocode/kb/failure/list", json!({ "cwd": cwd, "query": Value::Null, "status": Value::Null }));
+            host.rpc("kb.cands", "inocode/kb/candidate/list", json!({ "cwd": cwd }));
+            host.rpc("kb.fails", "inocode/kb/legacy/failureCases", json!({ "cwd": cwd, "limit": 100, "cursor": Value::Null }));
+        }
         SUB_PAGES | SUB_QUOTES => {
             let tag = st.get_tag().to_string();
             let tag = tag.trim_start_matches('#');
@@ -565,7 +708,48 @@ fn go_pages(app: &AppWindow, host: &Host, tag: &str, title: Option<&str>) {
     }
 }
 
+/// Where a registered card or a candidate leads (`target: { tab, sub, ref }` of the server): the tab, its part,
+/// and the record. Used by the cards of the chat.
+pub(crate) fn go_target(app: &AppWindow, tab: &str, sub: &str, reference: &str) {
+    let Some(host) = HOST.with(|h| h.borrow().clone()) else { return };
+    let st = app.global::<KbState>();
+    match (tab, sub) {
+        ("knowledge", "checklist") => {
+            app.set_panel_open(true);
+            app.global::<crate::SidePanelState>().invoke_select(4);
+        }
+        ("knowledge", _) => {
+            let n = match sub {
+                "overview" => SUB_OVERVIEW,
+                "prohibitions" | "prohibition" => SUB_PROHIB,
+                "common" => SUB_COMMON,
+                _ => SUB_FAIL,
+            };
+            app.global::<crate::Tabs>().invoke_select(1);
+            st.set_know_sub(n);
+            st.set_sub(n);
+            K.with(|k| {
+                let mut k = k.borrow_mut();
+                k.sel = -1;
+                k.extra_sel = -1;
+                k.extra2_sel = -1;
+                // the record the card named: by its title, once the list is read
+                k.pending_ref = Some(reference.to_string());
+            });
+            refresh(app, &host);
+            render(app);
+        }
+        ("evidence", "pages") | ("evidence", "quotes") => {
+            go_pages(app, &host, "", if reference.is_empty() { None } else { Some(reference) });
+        }
+        _ => {
+            app.global::<crate::Tabs>().invoke_select(if tab == "knowledge" { 1 } else { 2 });
+        }
+    }
+}
+
 pub fn install(app: &AppWindow, host: &Host) {
+    HOST.with(|h| *h.borrow_mut() = Some(host.clone()));
     let st = app.global::<KbState>();
     st.set_sub(SUB_OVERVIEW);
     st.set_evid_sub(SUB_PAGES);
@@ -620,6 +804,7 @@ pub fn install(app: &AppWindow, host: &Host) {
             let mut k = k.borrow_mut();
             k.sel = i;
             k.extra_sel = -1;
+            k.extra2_sel = -1;
         });
         if sub == SUB_PAGES {
             let title = K.with(|k| usize::try_from(i).ok().and_then(|i| k.borrow().pages.get(i).map(|p| s(p, "title").to_string())));
@@ -637,6 +822,18 @@ pub fn install(app: &AppWindow, host: &Host) {
         K.with(|k| {
             let mut k = k.borrow_mut();
             k.extra_sel = i;
+            k.extra2_sel = -1;
+            k.sel = -1;
+        });
+        render(&app);
+    });
+    let weak = app.as_weak();
+    st.on_pick_extra2(move |i| {
+        let Some(app) = weak.upgrade() else { return };
+        K.with(|k| {
+            let mut k = k.borrow_mut();
+            k.extra2_sel = i;
+            k.extra_sel = -1;
             k.sel = -1;
         });
         render(&app);
@@ -665,6 +862,18 @@ pub fn install(app: &AppWindow, host: &Host) {
         });
         let st = app.global::<KbState>();
         match kind {
+            "cand" => {
+                st.set_know_sub(SUB_FAIL);
+                st.set_sub(SUB_FAIL);
+                K.with(|k| {
+                    let mut k = k.borrow_mut();
+                    k.sel = -1;
+                    k.extra2_sel = -1;
+                    k.extra_sel = jump;
+                });
+                refresh(&app, &h);
+                render(&app);
+            }
             "prohib" | "fail" => {
                 let sub = if kind == "prohib" { SUB_PROHIB } else { SUB_FAIL };
                 st.set_know_sub(sub);
@@ -708,6 +917,7 @@ pub fn install(app: &AppWindow, host: &Host) {
     st.on_act(move |id| {
         let Some(app) = weak.upgrade() else { return };
         let cwd = cwd(&app);
+        let act_id = id.to_string();
         match id.as_str() {
             "overview-edit" => {
                 let text = K.with(|k| k.borrow().overview_text.clone());
@@ -724,6 +934,16 @@ pub fn install(app: &AppWindow, host: &Host) {
                 if let Some(p) = cur {
                     h.rpc("kb.write", "inocode/kb/prohibition/retract", json!({ "cwd": cwd, "id": s(&p, "id") }));
                     K.with(|k| k.borrow_mut().sel = -1);
+                }
+            }
+            "cand-approve" | "cand-reject" => {
+                let id = K.with(|k| {
+                    let k = k.borrow();
+                    usize::try_from(k.extra_sel).ok().and_then(|i| k.cands.get(i)).map(|c| s(c, "id").to_string())
+                });
+                if let Some(id) = id {
+                    let m = if act_id == "cand-approve" { "approve" } else { "reject" };
+                    h.rpc("kb.cand.act", &format!("inocode/kb/candidate/{m}"), json!({ "cwd": cwd, "id": id }));
                 }
             }
             "page-edit" => {
@@ -939,7 +1159,7 @@ fn on_rpc(app: &AppWindow, host: &Host, tag: &str, result: &Result<Value, String
         Err(e) => {
             match tag {
                 // 画面を開いただけの読み取りが失敗しても、何も出さない(サーバーが古いなど)
-                "kb.project" | "kb.index" | "kb.tags" | "kb.legacy" | "kb.fails" | "kb.check" => {}
+                "kb.project" | "kb.index" | "kb.tags" | "kb.legacy" | "kb.fails" | "kb.check" | "kb.cands" | "kb.failures" => {}
                 "kb.overview.saved" | "kb.page.saved" | "kb.prohib.saved" => show_error(app, e),
                 _ => show_error(app, e),
             }
@@ -969,6 +1189,41 @@ fn on_rpc(app: &AppWindow, host: &Host, tag: &str, result: &Result<Value, String
                 k.prohib = v.get("prohibitions").and_then(Value::as_array).cloned().unwrap_or_default();
                 // the first one is open until another is picked
                 if k.sel < 0 && k.extra_sel < 0 && !k.prohib.is_empty() {
+                    k.sel = 0;
+                }
+            });
+            render(app);
+        }
+        "kb.cands" => {
+            K.with(|k| {
+                let mut k = k.borrow_mut();
+                k.cands = v.get("candidates").and_then(Value::as_array).cloned().unwrap_or_default();
+                if k.extra_sel >= 0 && (k.extra_sel as usize) >= k.cands.len() {
+                    k.extra_sel = -1;
+                }
+                // the card named a candidate
+                if let Some(r) = k.pending_ref.clone() {
+                    if let Some(i) = k.cands.iter().position(|c| s(c, "title") == r || s(c, "id") == r) {
+                        k.extra_sel = i as i32;
+                        k.sel = -1;
+                        k.pending_ref = None;
+                    }
+                }
+            });
+            render(app);
+        }
+        "kb.failures" => {
+            K.with(|k| {
+                let mut k = k.borrow_mut();
+                k.failures = v.get("failures").and_then(Value::as_array).cloned().unwrap_or_default();
+                if let Some(r) = k.pending_ref.clone() {
+                    if let Some(i) = k.failures.iter().position(|f| s(f, "title") == r || s(f, "id") == r) {
+                        k.sel = i as i32;
+                        k.extra_sel = -1;
+                        k.pending_ref = None;
+                    }
+                }
+                if k.sel < 0 && k.extra_sel < 0 && k.extra_sel < 0 && k.extra2_sel < 0 && !k.failures.is_empty() {
                     k.sel = 0;
                 }
             });
@@ -1041,6 +1296,15 @@ fn on_rpc(app: &AppWindow, host: &Host, tag: &str, result: &Result<Value, String
                 k.items = v.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
             });
             render_checklist(app);
+        }
+        "kb.cand.act" => {
+            K.with(|k| {
+                let mut k = k.borrow_mut();
+                k.extra_sel = -1;
+                k.sel = -1;
+            });
+            refresh(app, host);
+            refresh_checklist(app, host);
         }
         "kb.overview.saved" | "kb.prohib.saved" | "kb.write" | "kb.migrate" => {
             st.set_edit_kind(0);
@@ -1140,6 +1404,36 @@ mod tests {
 c ", "", 0, false);
         assert_eq!(r.title.as_str(), "一行目 二行目 三行目");
         assert_eq!(r.sub.as_str(), "a b c");
+    }
+
+    #[test]
+    fn failure_fields_say_unknown_and_show_what_an_update_changes() {
+        assert_eq!(cond_text("unknown"), "不明");
+        assert_eq!(cond_text("  Unknown "), "不明");
+        assert_eq!(cond_text("fastboot flash の最中"), "fastboot flash の最中");
+        let new = json!({ "conditions": "unknown", "attempted": "adb shell", "outcome": "exit 1", "avoid": "使わない" });
+        let f = failure_fields(&new, None);
+        assert_eq!(f[0], ("条件", "不明".to_string()));
+        assert!(f.iter().any(|(k, v)| *k == "実行したこと" && v == "adb shell"));
+        let old = json!({ "conditions": "fastboot の最中", "attempted": "adb shell", "outcome": "exit 2" });
+        let d = failure_fields(&new, Some(&old));
+        assert!(d.iter().any(|(k, v)| *k == "条件" && v == "fastboot の最中
+→ 不明"));
+        assert!(d.iter().any(|(k, v)| *k == "結果" && v == "exit 2
+→ exit 1"));
+        // what did not change is shown once
+        assert!(d.iter().any(|(k, v)| *k == "実行したこと" && v == "adb shell"));
+        // a record without any condition is not left blank
+        assert_eq!(failure_fields(&json!({}), None)[0], ("条件", "不明".to_string()));
+    }
+
+    #[test]
+    fn candidates_are_listed_with_their_kind() {
+        let list = fixture("kb-candidate-list.json").get("candidates").and_then(Value::as_array).cloned().unwrap();
+        let rows = cand_rows(&list, 0);
+        assert_eq!(rows[0].sub.as_str(), "チェックリストの項目");
+        assert_eq!(rows[0].end.as_str(), "承認待ち");
+        assert_eq!(cand_kind_label(&json!({ "kind": "failureCase", "op": "update" })), "失敗の記録 · 更新の提案");
     }
 
     #[test]

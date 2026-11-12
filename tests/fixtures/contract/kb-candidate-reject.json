@@ -1,0 +1,11 @@
+{
+  "method": "inocode/kb/candidate/reject",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "id": "cand-0001"
+  },
+  "response": {
+    "status": "denied"
+  },
+  "note": "却下すると、候補を捨てる(ファイルは .inocode/kb/inbox/rejected/ へ移す。削除しない)。"
+}

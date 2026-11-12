@@ -1,0 +1,32 @@
+{
+  "method": "inocode/kb/candidate/list",
+  "request": {
+    "cwd": "D:\\work\\demo-project"
+  },
+  "response": {
+    "candidates": [
+      {
+        "id": "cand-0001",
+        "kind": "checklistItem",
+        "op": "add",
+        "title": "変更の後にテストを走らせる",
+        "status": "candidate",
+        "requiresApproval": true,
+        "by": "model",
+        "at": "2026-11-12T03:10:00Z",
+        "target": {
+          "tab": "knowledge",
+          "sub": "checklist",
+          "ref": "実装"
+        },
+        "payload": {
+          "role": "実装",
+          "text": "変更の後にテストを走らせる",
+          "when": "afterChange",
+          "check": "machine"
+        }
+      }
+    ]
+  },
+  "note": "承認待ちの候補(モデルの提案)。kind: checklistItem(チェックリスト項目の追加)/ overviewAppend(概要への追記の案。payload.text)/ failureCase(失敗の記録の候補。payload は条件・症状など)。承認・却下できるのはユーザー本人(GUI のクライアント)だけで、モデルのツールには出さない。第 1 版では、候補を作るモデル側の入口は無い(RPC と一覧、承認の反映だけ)。"
+}

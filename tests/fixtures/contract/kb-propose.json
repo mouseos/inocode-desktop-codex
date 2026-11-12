@@ -1,0 +1,33 @@
+{
+  "method": "tool kb_propose (モデルのツール)",
+  "request": {
+    "kind": "failure",
+    "title": "adb shell は fastboot 中に失敗する",
+    "body": "fastboot flash の最中に adb shell を実行したら失敗した。",
+    "conditions": "fastboot の最中だった(直前: fastboot flash boot)。分からなければ unknown",
+    "attempted": "adb shell",
+    "outcome": "exit 1: device offline",
+    "avoid": "fastboot の間は adb shell を使わない(通常起動のあとなら使える)",
+    "cause": "端末が fastboot モードで、adb に応答しなかった(見立て)",
+    "source": "https://developer.android.com/tools/adb",
+    "checked_at": "2026-11-13"
+  },
+  "response": {
+    "kind": "failureCase",
+    "op": "create",
+    "id": "cand-0001",
+    "title": "adb shell は fastboot 中に失敗する",
+    "status": "candidate",
+    "requiresApproval": true,
+    "target": { "tab": "knowledge", "sub": "failures", "ref": "adb shell は fastboot 中に失敗する" },
+    "updates": null
+  },
+  "deniedResponse": {
+    "kind": "failure",
+    "op": "create",
+    "status": "denied",
+    "requiresApproval": false,
+    "reason": "conditions are required: the situation, environment and state it failed in; write `unknown` if you do not know"
+  },
+  "note": "モデルは提案だけ。候補(承認待ち)に入り、ユーザーが画面で承認する(inocode/kb/candidate/approve。却下は candidate/reject)と登録される。必須: kind(failure / page / fact)、title、body。failure は conditions(分からなければ `unknown`。推測で埋めない)、attempted、outcome も必須。任意: avoid、cause(仮説として保存)、source、checked_at。プロジェクト ID はホストが付ける。似た記録(同じ題、または失敗の attempted と conditions が同じ)があれば op=update で updates に相手の ID。同じ提案が承認待ちなら denied(reason に cand の ID)。承認の結果: failure は確認済みの失敗記録(search_knowledge で引ける)、page / fact は確認済みの資料ページ(fact は #fact タグ)。advisor の自動記録は候補のまま・注入も検索もしない。"
+}

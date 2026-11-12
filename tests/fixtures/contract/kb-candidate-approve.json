@@ -1,0 +1,17 @@
+{
+  "method": "inocode/kb/candidate/approve",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "id": "cand-0001"
+  },
+  "response": {
+    "status": "registered",
+    "target": {
+      "tab": "knowledge",
+      "sub": "checklist",
+      "ref": "実装"
+    },
+    "id": "chk-0004"
+  },
+  "note": "承認すると確定(チェックリスト項目の追加・概要への追記)。失敗の記録(failureCase)の承認は第 1 版では未対応(-32602)。承認後に kb/changed を通知(未実装の間は、画面が取り直す)。"
+}

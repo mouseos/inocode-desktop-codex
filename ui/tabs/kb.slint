@@ -80,6 +80,9 @@ export global KbState {
     // 一覧の下の別の区画(旧規則の移行など)
     in property <string> extra-heading;
     in property <[KbRow]> extra-rows;
+    // 一覧の下の 2 つ目の区画(旧データの読み取り)
+    in property <string> extra2-heading;
+    in property <[KbRow]> extra2-rows;
     in property <string> note;
     // 詳細
     in property <bool> has-detail: false;
@@ -119,6 +122,7 @@ export global KbState {
     callback pick-tag(string);
     callback pick(int);
     callback pick-extra(int);
+    callback pick-extra2(int);
     callback extra-act(int, string);
     callback pick-section-row(int, int);
     callback pick-chip(string);
@@ -246,7 +250,7 @@ component Detail inherits Flickable {
         for p in KbState.d-body: Para { text: p; }
         for kv in KbState.d-kv: HorizontalLayout {
             spacing: 12px;
-            Text { width: 56px; text: kv.k; color: Theme.fg-tertiary; font-size: 13px; vertical-alignment: top; }
+            Text { width: 92px; text: kv.k; color: Theme.fg-tertiary; font-size: 13px; vertical-alignment: top; }
             Text { text: kv.v; color: Theme.fg; font-size: 13px; wrap: word-wrap; horizontal-stretch: 1; }
         }
         for q in KbState.d-quotes: Rectangle {
@@ -295,6 +299,7 @@ component Detail inherits Flickable {
             alignment: start;
             for l in KbState.d-backlinks: Tag { label: l; clicked => { KbState.pick-link(l); } }
         }
+        if KbState.note != "": Text { text: KbState.note; color: Theme.danger; font-size: 12px; wrap: word-wrap; }
         Rectangle { height: 8px; }
         HorizontalLayout {
             spacing: 8px;
@@ -378,7 +383,7 @@ component Split inherits Rectangle {
                         height: xr.preferred-height;
                         xr := VerticalLayout {
                             RowItem { item: r; clicked => { KbState.pick-extra(i); } }
-                            if r.selected: HorizontalLayout {
+                            if r.selected && KbState.sub == 1: HorizontalLayout {
                                 padding-left: 10px;
                                 padding-bottom: 6px;
                                 spacing: 6px;
@@ -389,6 +394,9 @@ component Split inherits Rectangle {
                             }
                         }
                     }
+                    if KbState.extra2-rows.length > 0: Rectangle { height: 14px; }
+                    if KbState.extra2-rows.length > 0: Heading2 { text: KbState.extra2-heading; }
+                    for r[i] in KbState.extra2-rows: RowItem { item: r; clicked => { KbState.pick-extra2(i); } }
                 }
             }
         }
