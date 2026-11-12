@@ -95,8 +95,26 @@ pub(super) fn open_ws(url: &str) -> Result<Conn, String> {
 /// executable, then development build output (`cli/inocode/codex-rs/target-win/dev-small`)
 /// relative to the executable and to the working directory.
 pub fn find_inocode(configured: &str) -> Result<std::path::PathBuf, String> {
+    find_binary(configured, if cfg!(windows) { "inocode.exe" } else { "inocode" })
+}
+
+/// The server to run: `inocode-app-server` (no TUI, smaller) when it is found, else `inocode`.
+/// The flag is true for the standalone server, which takes no `app-server` subcommand.
+pub fn find_server(configured: &str) -> Result<(std::path::PathBuf, bool), String> {
+    let explicit = !configured.is_empty() && configured != "inocode";
+    if !explicit {
+        let name = if cfg!(windows) { "inocode-app-server.exe" } else { "inocode-app-server" };
+        if let Ok(p) = find_binary("", name) {
+            return Ok((p, true));
+        }
+    }
+    let p = find_inocode(configured)?;
+    let standalone = p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("inocode-app-server"));
+    Ok((p, standalone))
+}
+
+fn find_binary(configured: &str, name: &str) -> Result<std::path::PathBuf, String> {
     use std::path::{Path, PathBuf};
-    let name = if cfg!(windows) { "inocode.exe" } else { "inocode" };
     let explicit = !configured.is_empty() && configured != "inocode";
     if explicit {
         let p = PathBuf::from(configured);
@@ -135,7 +153,7 @@ pub fn find_inocode(configured: &str) -> Result<std::path::PathBuf, String> {
             return Ok(p);
         }
     }
-    Err("inocode.exe が見つかりません。INOCODE_BIN を指定してください".to_string())
+    Err(format!("{name} が見つかりません。INOCODE_BIN を指定してください"))
 }
 
 /// Version (x.y.z) reported by the installed official Codex CLI (`codex --version`), if any.
@@ -218,9 +236,12 @@ pub(super) fn toml_string(s: &str) -> String {
 }
 
 pub(super) fn open_stdio(program: &str, version: Option<&str>) -> Result<Conn, String> {
-    let program = find_inocode(program)?;
+    let (program, standalone) = find_server(program)?;
     let mut cmd = Proc::new(&program);
-    cmd.args(["app-server", "--listen", "stdio://"]);
+    if !standalone {
+        cmd.arg("app-server");
+    }
+    cmd.args(["--listen", "stdio://"]);
     // Optional model catalog file (for example OpenCodex's), passed as a config override.
     if let Ok(path) = std::env::var("INOCODE_MODEL_CATALOG") {
         if !path.is_empty() {
