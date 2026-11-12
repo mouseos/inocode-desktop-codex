@@ -50,6 +50,11 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
         if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
             match result.as_ref().ok().and_then(|v| v.pointer("/thread/id")).and_then(Value::as_str) {
                 Some(id) => {
+                    // The fork carries the name of the thread it was made from.
+                    let name = app.global::<AppState>().get_session_title().to_string();
+                    if !name.is_empty() && name != "新しいセッション" && name != "(無題)" {
+                        h.send(Command::Rpc { tag: "model.fork.name".into(), method: "thread/name/set".into(), params: json!({ "threadId": id, "name": name }) });
+                    }
                     h.send(Command::OpenThread(id.to_string()));
                     crate::sidebar::refresh();
                 }
