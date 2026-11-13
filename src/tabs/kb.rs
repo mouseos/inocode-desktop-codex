@@ -27,12 +27,9 @@ struct K {
     overview_rev: String,
     index: Value,
     prohib: Vec<Value>,
-    fails: Vec<Value>,
     /// 承認済みの失敗の記録と、承認待ちの候補(すべての種類)
     failures: Vec<Value>,
     cands: Vec<Value>,
-    extra2_sel: i32,
-    legacy: Vec<Value>,
     pages: Vec<Value>,
     /// 読んだページ(題名 -> page/read の応答)
     read: Vec<(String, Value)>,
@@ -54,7 +51,7 @@ struct K {
 }
 
 thread_local! {
-    static K: RefCell<K> = RefCell::new(K { sel: -1, extra_sel: -1, extra2_sel: -1, ..K::default() });
+    static K: RefCell<K> = RefCell::new(K { sel: -1, extra_sel: -1, ..K::default() });
     static HOST: RefCell<Option<Host>> = const { RefCell::new(None) };
 }
 
@@ -185,8 +182,7 @@ fn prohib_rows(list: &[Value], sel: i32) -> Vec<KbRow> {
         .enumerate()
         .map(|(i, p)| {
             let end = if relaxed_now(p) { "緩和中" } else { strength_label(s(p, "strength")) };
-            let unconfirmed = p.get("origin").and_then(|o| o.get("kind")).and_then(Value::as_str) == Some("legacy");
-            row(s(p, "title"), s(p, "reason"), end, if unconfirmed { 1 } else { 0 }, i as i32 == sel)
+            row(s(p, "title"), s(p, "reason"), end, 0, i as i32 == sel)
         })
         .collect()
 }
@@ -327,8 +323,6 @@ fn render(app: &AppWindow) {
     let st = app.global::<KbState>();
     let sub = st.get_sub();
     let mut meta: Option<(Vec<&'static str>, Vec<Vec<i32>>)> = None;
-    st.set_extra2_rows(ModelRc::default());
-    st.set_extra2_heading("".into());
     K.with(|k| {
         let k = k.borrow();
         match sub {
@@ -339,15 +333,8 @@ fn render(app: &AppWindow) {
                 st.set_search_hint("知識を検索".into());
                 st.set_tags(ModelRc::default());
                 st.set_rows(model(prohib_rows(&k.prohib, k.sel)));
-                let legacy: Vec<KbRow> = k
-                    .legacy
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, r)| r.get("migrated").is_none_or(Value::is_null))
-                    .map(|(i, r)| row(s(r, "title"), s(r, "reason"), "", 0, i as i32 == k.extra_sel))
-                    .collect();
-                st.set_extra_heading(if legacy.is_empty() { "" } else { "旧規則" }.into());
-                st.set_extra_rows(model(legacy));
+                st.set_extra_heading("".into());
+                st.set_extra_rows(ModelRc::default());
                 match usize::try_from(k.sel).ok().and_then(|i| k.prohib.get(i)) {
                     Some(p) => detail_prohib(&st, p),
                     None => clear_detail(&st),
@@ -370,18 +357,8 @@ fn render(app: &AppWindow) {
                 st.set_rows(model(rows));
                 st.set_extra_heading(if k.cands.is_empty() { "" } else { "承認待ち" }.into());
                 st.set_extra_rows(model(cand_rows(&k.cands, k.extra_sel)));
-                st.set_extra2_heading(if k.fails.is_empty() { "" } else { "旧データ" }.into());
-                let legacy: Vec<KbRow> = k.fails.iter().enumerate().map(|(i, f)| row(s(f, "title"), s(f, "symptom"), "未確認", 1, i as i32 == k.extra2_sel)).collect();
-                st.set_extra2_rows(model(legacy));
                 if let Some(c) = usize::try_from(k.extra_sel).ok().and_then(|i| k.cands.get(i)) {
                     detail_candidate(&st, c);
-                } else if let Some(f) = usize::try_from(k.extra2_sel).ok().and_then(|i| k.fails.get(i)) {
-                    clear_detail(&st);
-                    st.set_has_detail(true);
-                    st.set_d_title(s(f, "title").into());
-                    st.set_d_badge("未確認".into());
-                    st.set_d_badge_tone(1);
-                    st.set_d_kv(model(vec![KbKv { k: "症状".into(), v: s(f, "symptom").into() }]));
                 } else if let Some(f) = usize::try_from(k.sel).ok().and_then(|i| k.failures.get(i)) {
                     clear_detail(&st);
                     st.set_has_detail(true);
@@ -498,10 +475,6 @@ fn detail_prohib(st: &KbState<'_>, p: &Value) {
     st.set_d_title(s(p, "title").into());
     st.set_d_meta(strength_label(s(p, "strength")).into());
     let origin = p.get("origin").cloned().unwrap_or(Value::Null);
-    if s(&origin, "kind") == "legacy" {
-        st.set_d_badge("未確認".into());
-        st.set_d_badge_tone(1);
-    }
     st.set_d_body(strs(if s(p, "reason").is_empty() { vec![] } else { vec![s(p, "reason").to_string()] }));
     let mut kv = Vec::new();
     let cond = match_text(p.get("match").unwrap_or(&Value::Null));
@@ -599,7 +572,7 @@ fn render_overview(app: &AppWindow, k: &K) -> (Vec<&'static str>, Vec<Vec<i32>>)
         jumps.push((0..n).collect());
     }
     // 最近の失敗の記録
-    let recent: Vec<KbRow> = k.fails.iter().take(2).map(|f| row(s(f, "title"), s(f, "symptom"), "未確認", 1, false)).collect();
+    let recent: Vec<KbRow> = k.failures.iter().take(2).map(|f| row(s(f, "title"), &cond_text(s(f, "conditions")), "", 0, false)).collect();
     if !recent.is_empty() {
         let n = recent.len() as i32;
         sections.push(KbSection { heading: "最近の失敗の記録".into(), rows: model(recent), chips: ModelRc::default() });
@@ -619,17 +592,15 @@ fn refresh(app: &AppWindow, host: &Host) {
         SUB_OVERVIEW => {
             host.rpc("kb.overview", "inocode/kb/overview/read", json!({ "cwd": cwd }));
             host.rpc("kb.index", "inocode/kb/index/get", json!({ "cwd": cwd }));
-            host.rpc("kb.fails", "inocode/kb/legacy/failureCases", json!({ "cwd": cwd, "limit": 2, "cursor": Value::Null }));
+            host.rpc("kb.failures", "inocode/kb/failure/list", json!({ "cwd": cwd, "query": Value::Null, "status": Value::Null }));
             host.rpc("kb.cands", "inocode/kb/candidate/list", json!({ "cwd": cwd }));
         }
         SUB_PROHIB => {
             host.rpc("kb.prohib", "inocode/kb/prohibition/list", json!({ "cwd": cwd, "status": "active" }));
-            host.rpc("kb.legacy", "inocode/kb/legacy/rules", json!({ "cwd": cwd }));
         }
         SUB_FAIL => {
             host.rpc("kb.failures", "inocode/kb/failure/list", json!({ "cwd": cwd, "query": Value::Null, "status": Value::Null }));
             host.rpc("kb.cands", "inocode/kb/candidate/list", json!({ "cwd": cwd }));
-            host.rpc("kb.fails", "inocode/kb/legacy/failureCases", json!({ "cwd": cwd, "limit": 100, "cursor": Value::Null }));
         }
         SUB_PAGES | SUB_QUOTES => {
             let tag = st.get_tag().to_string();
@@ -732,7 +703,6 @@ pub(crate) fn go_target(app: &AppWindow, tab: &str, sub: &str, reference: &str) 
                 let mut k = k.borrow_mut();
                 k.sel = -1;
                 k.extra_sel = -1;
-                k.extra2_sel = -1;
                 // the record the card named: by its title, once the list is read
                 k.pending_ref = Some(reference.to_string());
             });
@@ -762,8 +732,8 @@ pub fn install(app: &AppWindow, host: &Host) {
         st.set_note("".into());
         st.set_query("".into());
         st.set_tag("".into());
-        // 旧一覧と、根拠タブの旧画面は、既存の画面が出す
-        if n == 4 || (12..=15).contains(&n) {
+        // 発動の記録・引き継ぎ(知識タブ)と、マインドマップ・文書の検証(根拠タブ)は、それぞれの画面が出す
+        if (4..=5).contains(&n) || (12..=13).contains(&n) {
             return;
         }
         st.set_sub(n);
@@ -804,7 +774,6 @@ pub fn install(app: &AppWindow, host: &Host) {
             let mut k = k.borrow_mut();
             k.sel = i;
             k.extra_sel = -1;
-            k.extra2_sel = -1;
         });
         if sub == SUB_PAGES {
             let title = K.with(|k| usize::try_from(i).ok().and_then(|i| k.borrow().pages.get(i).map(|p| s(p, "title").to_string())));
@@ -822,37 +791,10 @@ pub fn install(app: &AppWindow, host: &Host) {
         K.with(|k| {
             let mut k = k.borrow_mut();
             k.extra_sel = i;
-            k.extra2_sel = -1;
             k.sel = -1;
         });
         render(&app);
     });
-    let weak = app.as_weak();
-    st.on_pick_extra2(move |i| {
-        let Some(app) = weak.upgrade() else { return };
-        K.with(|k| {
-            let mut k = k.borrow_mut();
-            k.extra2_sel = i;
-            k.extra_sel = -1;
-            k.sel = -1;
-        });
-        render(&app);
-    });
-
-    let (weak, h) = (app.as_weak(), host.clone());
-    st.on_extra_act(move |i, to| {
-        let Some(app) = weak.upgrade() else { return };
-        let id = K.with(|k| {
-            let k = k.borrow();
-            let list: Vec<&Value> = k.legacy.iter().filter(|r| r.get("migrated").is_none_or(Value::is_null)).collect();
-            list.get(i as usize).map(|r| s(r, "id").to_string())
-        });
-        if let Some(id) = id {
-            K.with(|k| k.borrow_mut().extra_sel = -1);
-            h.rpc("kb.migrate", "inocode/kb/legacy/migrate", json!({ "cwd": cwd(&app), "ruleId": id, "to": to.to_string(), "ledgerRef": Value::Null, "quote": Value::Null }));
-        }
-    });
-
     let (weak, h) = (app.as_weak(), host.clone());
     st.on_pick_section_row(move |si, ri| {
         let Some(app) = weak.upgrade() else { return };
@@ -868,8 +810,7 @@ pub fn install(app: &AppWindow, host: &Host) {
                 K.with(|k| {
                     let mut k = k.borrow_mut();
                     k.sel = -1;
-                    k.extra2_sel = -1;
-                    k.extra_sel = jump;
+                            k.extra_sel = jump;
                 });
                 refresh(&app, &h);
                 render(&app);
@@ -1159,7 +1100,7 @@ fn on_rpc(app: &AppWindow, host: &Host, tag: &str, result: &Result<Value, String
         Err(e) => {
             match tag {
                 // 画面を開いただけの読み取りが失敗しても、何も出さない(サーバーが古いなど)
-                "kb.project" | "kb.index" | "kb.tags" | "kb.legacy" | "kb.fails" | "kb.check" | "kb.cands" | "kb.failures" => {}
+                "kb.project" | "kb.index" | "kb.tags" | "kb.check" | "kb.cands" | "kb.failures" => {}
                 "kb.overview.saved" | "kb.page.saved" | "kb.prohib.saved" => show_error(app, e),
                 _ => show_error(app, e),
             }
@@ -1187,6 +1128,12 @@ fn on_rpc(app: &AppWindow, host: &Host, tag: &str, result: &Result<Value, String
             K.with(|k| {
                 let mut k = k.borrow_mut();
                 k.prohib = v.get("prohibitions").and_then(Value::as_array).cloned().unwrap_or_default();
+                if let Some(r) = k.pending_ref.clone() {
+                    if let Some(i) = k.prohib.iter().position(|p| s(p, "id") == r || s(p, "title") == r) {
+                        k.sel = i as i32;
+                        k.pending_ref = None;
+                    }
+                }
                 // the first one is open until another is picked
                 if k.sel < 0 && k.extra_sel < 0 && !k.prohib.is_empty() {
                     k.sel = 0;
@@ -1223,21 +1170,7 @@ fn on_rpc(app: &AppWindow, host: &Host, tag: &str, result: &Result<Value, String
                         k.pending_ref = None;
                     }
                 }
-                if k.sel < 0 && k.extra_sel < 0 && k.extra_sel < 0 && k.extra2_sel < 0 && !k.failures.is_empty() {
-                    k.sel = 0;
-                }
-            });
-            render(app);
-        }
-        "kb.legacy" => {
-            K.with(|k| k.borrow_mut().legacy = v.get("rules").and_then(Value::as_array).cloned().unwrap_or_default());
-            render(app);
-        }
-        "kb.fails" => {
-            K.with(|k| {
-                let mut k = k.borrow_mut();
-                k.fails = v.get("cases").and_then(Value::as_array).cloned().unwrap_or_default();
-                if k.sel < 0 && !k.fails.is_empty() {
+                if k.sel < 0 && k.extra_sel < 0 && !k.failures.is_empty() {
                     k.sel = 0;
                 }
             });
@@ -1306,7 +1239,7 @@ fn on_rpc(app: &AppWindow, host: &Host, tag: &str, result: &Result<Value, String
             refresh(app, host);
             refresh_checklist(app, host);
         }
-        "kb.overview.saved" | "kb.prohib.saved" | "kb.write" | "kb.migrate" => {
+        "kb.overview.saved" | "kb.prohib.saved" | "kb.write" => {
             st.set_edit_kind(0);
             refresh(app, host);
         }

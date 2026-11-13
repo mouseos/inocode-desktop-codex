@@ -63,11 +63,11 @@ export struct KbCheck {
 export global KbState {
     // 0 = 概要、1 = 禁止事項、2 = 失敗の記録、3 = 共通知識(知識タブ)。10 = ページ、11 = 引用(根拠タブ)。
     in-out property <int> sub: 0;
-    // 各タブの副タブの選び(知識タブ: 0..4 = 旧一覧、根拠タブ: 10, 11, 12.. = 旧画面)
+    // 各タブの副タブの選び(知識タブ: 0..5 = 4 が発動の記録、5 が引き継ぎ。根拠タブ: 10 ページ、11 引用、12 マインドマップ、13 文書の検証)
     in-out property <int> know-sub: 0;
     in-out property <int> evid-sub: 10;
-    in property <[string]> know-subs: ["概要", "禁止事項", "失敗の記録", "共通知識", "旧一覧"];
-    in property <[string]> evid-subs: ["ページ", "引用", "原資料", "主張", "マインドマップ", "文書の検証"];
+    in property <[string]> know-subs: ["概要", "禁止事項", "失敗の記録", "共通知識", "発動の記録", "引き継ぎ"];
+    in property <[string]> evid-subs: ["ページ", "引用", "マインドマップ", "文書の検証"];
     // side panel の副タブの帯の並び(表示の順に、タブの番号)
     in property <[int]> panel-order: [0, 4, 1, 2, 3];
     in-out property <string> query;
@@ -77,12 +77,9 @@ export global KbState {
     in property <[string]> tags;
     in property <string> tag;
     in property <[KbRow]> rows;
-    // 一覧の下の別の区画(旧規則の移行など)
+    // 一覧の下の別の区画(承認待ちの候補)
     in property <string> extra-heading;
     in property <[KbRow]> extra-rows;
-    // 一覧の下の 2 つ目の区画(旧データの読み取り)
-    in property <string> extra2-heading;
-    in property <[KbRow]> extra2-rows;
     in property <string> note;
     // 詳細
     in property <bool> has-detail: false;
@@ -122,8 +119,6 @@ export global KbState {
     callback pick-tag(string);
     callback pick(int);
     callback pick-extra(int);
-    callback pick-extra2(int);
-    callback extra-act(int, string);
     callback pick-section-row(int, int);
     callback pick-chip(string);
     callback pick-link(string);
@@ -383,20 +378,8 @@ component Split inherits Rectangle {
                         height: xr.preferred-height;
                         xr := VerticalLayout {
                             RowItem { item: r; clicked => { KbState.pick-extra(i); } }
-                            if r.selected && KbState.sub == 1: HorizontalLayout {
-                                padding-left: 10px;
-                                padding-bottom: 6px;
-                                spacing: 6px;
-                                alignment: start;
-                                Button { label: "禁止事項にする"; clicked => { KbState.extra-act(i, "prohibition"); } }
-                                Button { label: "チェックリストにする"; clicked => { KbState.extra-act(i, "checklist"); } }
-                                Button { label: "使わない"; clicked => { KbState.extra-act(i, "skip"); } }
-                            }
                         }
                     }
-                    if KbState.extra2-rows.length > 0: Rectangle { height: 14px; }
-                    if KbState.extra2-rows.length > 0: Heading2 { text: KbState.extra2-heading; }
-                    for r[i] in KbState.extra2-rows: RowItem { item: r; clicked => { KbState.pick-extra2(i); } }
                 }
             }
         }
