@@ -1,0 +1,23 @@
+{
+  "method": "inocode/kb/page/graph",
+  "request": {
+    "cwd": "D:\\work\\demo-project",
+    "limit": 60
+  },
+  "response": {
+    "pages": [
+      {
+        "title": "SQLite のロック",
+        "confirmed": false,
+        "rev": "r2",
+        "links": [
+          { "title": "WAL の設定", "exists": false }
+        ],
+        "quotes": [
+          { "sourceRef": "src_0001", "sourceTitle": "SQLite docs", "matches": true }
+        ]
+      }
+    ]
+  },
+  "note": "マインドマップ用に 1 回で全ページ分を返す。本文は含めない。limit は省略可(省略時は全ページ)。page/list 1 回 + この 1 回で、page/read の連続呼び出しを置き換える。quotes[].matches は、いま原資料の本文に一字一句含まれるか。"
+}

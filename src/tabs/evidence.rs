@@ -297,8 +297,6 @@ fn parse_findings(result: &Value) -> Vec<FindingData> {
 struct E {
     /// 読んだページ(page/read の応答)
     pages: Vec<Value>,
-    /// 読むページの題名(一覧の先頭から)
-    expected: usize,
     nodes: Vec<NodeData>,
     edges: Vec<EdgeData>,
     layout: Option<Layout>,
@@ -486,7 +484,7 @@ fn show_node_detail(app: &AppWindow) {
     });
 }
 
-/// マップと検証のために、ページの一覧を取り、先頭から読む
+/// マップと検証のために、プロジェクトのページ(リンクと引用の出典つき)を取る
 fn request(app: &AppWindow, host: &Host) {
     let cwd = cwd(app);
     E.with(|e| *e.borrow_mut() = E { selected_node: None, ..E::default() });
@@ -494,7 +492,8 @@ fn request(app: &AppWindow, host: &Host) {
         rebuild(app);
         return;
     }
-    host.rpc("evidence.pages", "inocode/kb/page/list", json!({ "cwd": cwd, "query": Value::Null, "tag": Value::Null, "limit": MAX_PAGES, "cursor": Value::Null }));
+    // the pages with their links and the sources of their quotes, in one call
+    host.rpc("evidence.graph", "inocode/kb/page/graph", json!({ "cwd": cwd, "limit": MAX_PAGES }));
 }
 
 // ------------------------------------------------------------------ tab entry points
@@ -660,28 +659,13 @@ pub fn event(app: &AppWindow, host: &Host, event: &Event) {
     let Event::Rpc { tag, result } = event else { return };
     let st = app.global::<EvidenceState>();
     match (tag.as_str(), result) {
-        ("evidence.pages", Ok(v)) => {
-            let titles: Vec<String> = payload(v).get("pages").and_then(Value::as_array).map(|a| a.iter().take(MAX_PAGES).map(|p| s(p, "title")).collect()).unwrap_or_default();
-            E.with(|e| e.borrow_mut().expected = titles.len());
-            st.set_note(if titles.is_empty() { "このプロジェクトに資料ページはありません".into() } else { "".into() });
-            rebuild(app);
-            for t in titles {
-                host.rpc("evidence.page", "inocode/kb/page/read", json!({ "cwd": cwd(app), "title": t }));
-            }
+        ("evidence.graph", Ok(v)) => {
+            let pages: Vec<Value> = payload(v).get("pages").and_then(Value::as_array).cloned().unwrap_or_default();
+            st.set_note(if pages.is_empty() { "このプロジェクトに資料ページはありません".into() } else { "".into() });
+            E.with(|e| e.borrow_mut().pages = pages);
+            rebuild_now(app);
         }
-        ("evidence.pages", Err(e)) => st.set_note(crate::errmsg::short(e).into()),
-        ("evidence.page", Ok(v)) => {
-            let page = payload(v).clone();
-            E.with(|e| {
-                let mut e = e.borrow_mut();
-                let t = s(&page, "title");
-                match e.pages.iter_mut().find(|p| s(p, "title") == t) {
-                    Some(x) => *x = page,
-                    None => e.pages.push(page),
-                }
-            });
-            rebuild(app);
-        }
+        ("evidence.graph", Err(e)) => st.set_note(crate::errmsg::short(e).into()),
         ("evidence.verify", Ok(v)) => {
             st.set_verifying(false);
             let findings = parse_findings(v);
@@ -724,6 +708,28 @@ mod tests {
         let lay = layout(&nodes, &edges);
         assert_eq!(lay.placed.len(), 3);
         assert!(build_graph(&[]).0.is_empty());
+    }
+
+    #[test]
+    fn the_graph_call_gives_the_map_without_reading_each_page() {
+        let pages = fixture("kb-page-graph.json").get("pages").and_then(Value::as_array).cloned().unwrap();
+        let (nodes, edges) = build_graph(&pages);
+        // the page, its unresolved link, and the source of its quote: the same map as from page/read
+        assert_eq!(nodes.len(), 3);
+        assert_eq!(edges.len(), 2);
+        assert!(nodes.iter().any(|n| n.kind == "link" && !n.supported));
+        assert!(!pages_key(&pages).is_empty());
+        let srcs = sources_of(&pages);
+        assert_eq!(srcs, vec![("src_0001".to_string(), "SQLite docs".to_string())]);
+    }
+
+    #[test]
+    fn verify_findings_come_with_their_place() {
+        let f = parse_findings(&fixture("kb-verify.json"));
+        assert_eq!(f.len(), 3);
+        assert_eq!(f[0].kind_label, "原資料に無い語");
+        assert_eq!(f[0].range, "22–27 文字目");
+        assert_eq!(f[2].kind_label, "引用が無い");
     }
 
     #[test]
