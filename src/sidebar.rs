@@ -450,6 +450,9 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
                     all.append(&mut list);
                     list = all;
                 }
+                // A thread that was rewound has a second rollout file: the server can list it twice.
+                let mut seen = std::collections::HashSet::new();
+                list.retain(|t| seen.insert(t.id.clone()));
                 st.threads = list;
                 sync_project_cwds(&mut st);
                 rebuild_projects(app, &st);

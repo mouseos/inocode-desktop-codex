@@ -34,9 +34,8 @@ fn user_text_before(model: &ModelRc<Message>, index: usize) -> Option<String> {
 /// sent again.
 pub(crate) fn after_history(app: &AppWindow) {
     let Some(text) = RESEND.with(|r| r.borrow_mut().take()) else { return };
-    if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
-        crate::prompts::submit(app, &h, text);
-    }
+    // The way the composer sends it: the message is shown in the chat, then sent.
+    app.invoke_submit(text.into());
 }
 
 fn status(app: &AppWindow, text: &str, level: i32) {

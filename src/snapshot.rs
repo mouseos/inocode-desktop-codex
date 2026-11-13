@@ -47,6 +47,11 @@ fn run_step(app: &AppWindow, step: String) {
             // the section was closed when the rows were counted: the rows are asked again
             app.global::<AppState>().invoke_pick_model(i as i32);
         }
+    } else if let Some(spec) = step.strip_prefix("@act:") {
+        // "@act:<kind>:<row>": a hover action under a message (regenerate, rewind, edit, fork, copy),
+        // as a click on its button.
+        let (kind, row) = spec.split_once(':').unwrap_or((spec, "0"));
+        app.global::<MessageActions>().invoke_act(kind.into(), row.parse().unwrap_or(0));
     } else if step == "@run-plan" {
         crate::reply::act(app, "run-plan", 0);
     } else if let Some(f) = step.strip_prefix("@attach:") {
