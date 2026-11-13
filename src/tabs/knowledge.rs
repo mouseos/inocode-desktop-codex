@@ -61,12 +61,10 @@ fn guard_row(e: &Value, thread: &str) -> (String, String, String, i32) {
 
 // ------------------------------------------------------------------ screen
 
-fn cwd(app: &AppWindow) -> String {
-    let c = app.global::<crate::AppState>().get_cwd_text().to_string();
-    if !c.is_empty() {
-        return c;
-    }
-    std::env::current_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_default()
+/// The work folder of the open thread: the project is decided from it. Without one there is no project, and
+/// nothing is asked (never the folder the program was started in: that would be some other project).
+fn cwd(_app: &AppWindow) -> String {
+    crate::state::STATE.with(|s| s.borrow().active_cwd.clone())
 }
 
 fn render_guard(app: &AppWindow) {
@@ -93,6 +91,11 @@ fn render_guard(app: &AppWindow) {
 }
 
 fn request_guard(app: &AppWindow, host: &Host) {
+    if cwd(app).is_empty() {
+        K.with(|k| k.borrow_mut().guard.clear());
+        render_guard(app);
+        return;
+    }
     host.rpc("knowledge.guard", "inocode/guard/list", json!({ "cwd": cwd(app), "limit": 100 }));
 }
 

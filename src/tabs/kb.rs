@@ -284,12 +284,10 @@ fn overview_parts(text: &str, project: &str) -> (String, Vec<String>) {
 
 // ------------------------------------------------------------------ screen
 
-fn cwd(app: &AppWindow) -> String {
-    let c = app.global::<crate::AppState>().get_cwd_text().to_string();
-    if !c.is_empty() {
-        return c;
-    }
-    std::env::current_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_default()
+/// The work folder of the open thread: the project is decided from it. Without one there is no project, and
+/// nothing is asked (never the folder the program was started in: that would be some other project).
+fn cwd(_app: &AppWindow) -> String {
+    crate::state::STATE.with(|s| s.borrow().active_cwd.clone())
 }
 
 fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
@@ -587,6 +585,23 @@ fn refresh(app: &AppWindow, host: &Host) {
     let cwd = cwd(app);
     let st = app.global::<KbState>();
     let sub = st.get_sub();
+    // no open thread: no project, nothing from any other project
+    if cwd.is_empty() {
+        K.with(|k| {
+            let mut k = k.borrow_mut();
+            k.overview_text.clear();
+            k.index = Value::Null;
+            k.prohib.clear();
+            k.failures.clear();
+            k.cands.clear();
+            k.pages.clear();
+            k.read.clear();
+            k.tags.clear();
+            k.project.clear();
+        });
+        render(app);
+        return;
+    }
     host.rpc("kb.project", "inocode/kb/project/get", json!({ "cwd": cwd }));
     match sub {
         SUB_OVERVIEW => {
@@ -617,6 +632,15 @@ fn refresh(app: &AppWindow, host: &Host) {
 }
 
 fn refresh_checklist(app: &AppWindow, host: &Host) {
+    if cwd(app).is_empty() {
+        K.with(|k| {
+            let mut k = k.borrow_mut();
+            k.roles.clear();
+            k.items.clear();
+        });
+        render_checklist(app);
+        return;
+    }
     let role = K.with(|k| k.borrow().role.clone());
     let mut p = json!({ "cwd": cwd(app) });
     if !role.is_empty() {

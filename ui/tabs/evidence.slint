@@ -2,33 +2,10 @@ import { Theme } from "../theme.slint";
 import { KbState, KbBody } from "kb.slint";
 import { Tag, Button, StatusLabel, AreaEdit, LineEdit } from "g_widgets.slint";
 
-// 根拠タブ。このファイルと src/tabs/evidence.rs だけを編集して実装する。
+// 根拠タブのマインドマップと文書の検証(ページ・引用は kb.slint)。どちらも、開いているプロジェクトの
+// 資料ページ(inocode/kb/page/*)から作る。このファイルと src/tabs/evidence.rs。
 // Rust 側から触る状態とコールバックは EvidenceState にまとめる
 // (Rust では app.global::<EvidenceState>() で取得できる)。
-
-export struct ESource {
-    id: string,
-    title: string,
-    meta: string,
-    selected: bool,
-}
-
-export struct ESpan {
-    id: string,
-    text: string,
-}
-
-export struct EClaim {
-    id: string,
-    text: string,
-    type-label: string,
-    status: string,
-    status-label: string,
-    confidence-label: string,
-    // 根拠の引用(原資料名「引用の頭」を 1 行 1 件)
-    evidence: string,
-    author: string,
-}
 
 // マインドマップのノード。位置と大きさは Rust 側で決める。
 export struct GNode {
@@ -67,20 +44,9 @@ export struct Finding {
 }
 
 export global EvidenceState {
-    // 0 原資料、1 主張、2 マインドマップ、3 文書の検証
-    in-out property <int> tab: 0;
-    out property <[string]> tabs: ["原資料", "主張", "マインドマップ", "文書の検証"];
+    // 2 マインドマップ、3 文書の検証
+    in-out property <int> tab: 2;
     in property <string> note;
-
-    // 原資料
-    in property <[ESource]> sources;
-    in property <bool> has-source;
-    in property <string> source-title;
-    in property <string> source-meta;
-    in property <string> source-text;
-
-    // 主張
-    in property <[EClaim]> claims;
 
     // マインドマップ
     in property <[GNode]> nodes;
@@ -99,52 +65,8 @@ export global EvidenceState {
     in property <bool> verifying;
     in property <string> verify-note;
 
-    // 書き込み(importSource / addQuote / addClaim / setClaimStatus)
-    in property <string> write-note;
-    in-out property <bool> adding-source: false;
-    // 開いている原資料の題名・種別・版(あとから直す)
-    in-out property <bool> detail-open: false;
-    in-out property <string> detail-title;
-    in-out property <string> detail-version;
-    in-out property <int> detail-kind: 3;
-    out property <[string]> src-kinds: ["法令", "文書", "判例", "その他"];
-    in property <string> quote-note;
-    in property <[ESpan]> source-spans;
-    callback add-selection(int, int);
-    callback remove-quote(string);
-    in-out property <bool> adding-claim: false;
-    in-out property <string> new-claim-text;
-    in-out property <int> new-claim-type: 0;
-    in-out property <int> new-claim-confidence: 1;
-    out property <[string]> claim-types: ["事実", "解釈", "推論", "意見"];
-    out property <[string]> claim-confidences: ["確実", "たぶん", "未確認"];
-    out property <[string]> claim-statuses: ["根拠あり", "根拠なし", "撤回"];
-    in property <[VSource]> premise-options;
-    in property <[VSource]> span-options;
-    in-out property <string> span-query;
-    in-out property <string> premise-query;
-    // 主張の絞り込み: 0 = 根拠なし、1 = 根拠あり、2 = 撤回、3 = すべて(件数つきの文字は Rust が作る)
-    // 6 = すべて(絞り込みは、サーバーの状態の 6 つのあと)
-    in-out property <int> claim-filter: 6;
-    in property <[string]> claim-tags;
-    in property <string> claims-empty;
-    callback claim-filter-changed(int);
-    callback claim-set-status(string, int);
-    callback toggle-span(int);
-    callback form-filter-changed();
-    callback add-source();
-    callback pick-file();
-    callback paste-text();
-    callback save-detail();
-    callback cancel-source();
-    callback add-claim();
-    callback save-claim();
-    callback cancel-claim();
-    callback toggle-premise(int);
-
     callback refresh();
     callback tab-changed(int);
-    callback select-source(string);
     callback select-node(string);
     callback toggle-verify-source(int);
     callback verify();
