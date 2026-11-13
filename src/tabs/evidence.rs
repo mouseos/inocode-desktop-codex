@@ -354,7 +354,7 @@ fn build_all(pages: &[Value]) -> Built {
     let (nodes, edges) = build_graph(pages);
     let layout = layout(&nodes, &edges);
     let kind_of: HashMap<(&str, &str), &str> = edges.iter().map(|e| ((e.from.as_str(), e.to.as_str()), e.kind.as_str())).collect();
-    let tones = layout
+    let tones: Vec<i32> = layout
         .edges
         .iter()
         .map(|(a, b, _)| {
