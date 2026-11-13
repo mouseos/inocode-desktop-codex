@@ -165,6 +165,22 @@ pub(crate) fn push(model: &VecModel<Message>, id: &str, role: &str, text: &str) 
 
 pub(crate) fn rebuild_projects(app: &AppWindow, state: &State) {
     let (flat, filter) = crate::sidebar::mode();
+    // A new session is not on the server's list until its first message: it is shown at once anyway
+    // (under its folder), so that it can be found, renamed, archived or deleted.
+    let mut threads: Vec<ThreadInfo> = state.threads.clone();
+    if !state.active.is_empty() && !threads.iter().any(|t| t.id == state.active) && filter == 0 {
+        let title = app.global::<AppState>().get_session_title().to_string();
+        threads.push(ThreadInfo {
+            id: state.active.clone(),
+            title,
+            cwd: state.active_cwd.clone(),
+            pinned: false,
+            unread: false,
+            revision: String::new(),
+            status: 0,
+            parent: String::new(),
+        });
+    }
     let chat = |t: &ThreadInfo, depth: i32| {
         let selected = t.id == state.active;
         // Needs you, then working, then error, then unread.
@@ -179,8 +195,7 @@ pub(crate) fn rebuild_projects(app: &AppWindow, state: &State) {
         };
         ChatItem { id: t.id.as_str().into(), title: t.title.as_str().into(), status, selected, depth }
     };
-    let shown: Vec<&ThreadInfo> = state
-        .threads
+    let shown: Vec<&ThreadInfo> = threads
         .iter()
         .filter(|t| match filter {
             1 => t.unread,
@@ -205,12 +220,12 @@ pub(crate) fn rebuild_projects(app: &AppWindow, state: &State) {
     // Pinned sessions first, in their own group (not while viewing the archive).
     let pinned: Vec<&ThreadInfo> = shown.iter().copied().filter(|t| t.pinned && filter != 3).collect();
     if !pinned.is_empty() {
-        projects.push(ProjectItem { name: "ピン留め".into(), cwd: "".into(), chats: model(ordered(&pinned)), pinned: true });
+        projects.push(ProjectItem { name: "ピン留め".into(), cwd: "".into(), chats: model(ordered(&pinned)), pinned: true, current: false });
     }
     let rest: Vec<&ThreadInfo> = shown.iter().copied().filter(|t| !(t.pinned && filter != 3)).collect();
     if flat {
         if !rest.is_empty() {
-            projects.push(ProjectItem { name: "セッション".into(), cwd: "".into(), chats: model(ordered(&rest)), pinned: true });
+            projects.push(ProjectItem { name: "セッション".into(), cwd: "".into(), chats: model(ordered(&rest)), pinned: true, current: false });
         }
     } else {
         // One group per folder; a folder is keyed by its full path (two folders can share a name).
@@ -228,7 +243,7 @@ pub(crate) fn rebuild_projects(app: &AppWindow, state: &State) {
                 .filter(|n| !n.is_empty())
                 .unwrap_or_else(|| "(フォルダなし)".to_string());
             // Same name, different folder: show the parent folder too.
-            let dup = projects.iter().any(|p| p.name.as_str() == base) || state.threads.iter().any(|o| {
+            let dup = projects.iter().any(|p| p.name.as_str() == base) || threads.iter().any(|o| {
                 o.cwd != cwd && std::path::Path::new(&o.cwd).file_name() == std::path::Path::new(&cwd).file_name()
             });
             let name = if dup && !cwd.is_empty() {
@@ -241,7 +256,9 @@ pub(crate) fn rebuild_projects(app: &AppWindow, state: &State) {
             } else {
                 base
             };
-            projects.push(ProjectItem { name: name.into(), cwd: cwd.into(), chats: model(ordered(&items)), pinned: false });
+            // The folder of the session that is open is marked.
+            let current = !cwd.is_empty() && cwd == state.active_cwd;
+            projects.push(ProjectItem { name: name.into(), cwd: cwd.into(), chats: model(ordered(&items)), pinned: false, current });
         }
     }
     app.global::<AppState>().set_projects(ModelRc::from(Rc::new(VecModel::from(projects))));

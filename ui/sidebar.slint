@@ -20,14 +20,19 @@ export struct ProjectItem {
     chats: [ChatItem],
     // The "Pinned" group at the top: no new-session button.
     pinned: bool,
+    // The folder of the session that is open
+    current: bool,
 }
 
 component GroupHeader inherits Rectangle {
     in property <string> label;
     in property <bool> pinned: false;
+    in property <bool> current: false;
     in-out property <bool> open: true;
     callback add;
     height: 28px;
+    border-radius: Theme.radius-row;
+    background: root.current ? Theme.selected : transparent;
     TouchArea {
         mouse-cursor: pointer;
         clicked => { root.open = !root.open; }
@@ -70,6 +75,7 @@ component ProjectGroup inherits VerticalLayout {
     GroupHeader {
         label: root.project.name;
         pinned: root.project.pinned;
+        current: root.project.current;
         open <=> root.open;
         add => { root.new-in(root.project.cwd); }
     }

@@ -83,6 +83,8 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
             crate::panel_data::on_thread_active(app, &st.active.clone(), &cwd);
             app.global::<AppState>().set_cwd_text(cwd.into());
             refresh_pickers(app, &st);
+            // The folder of the open session is marked in the sidebar.
+            rebuild_projects(app, &st);
         }
         Event::Account { logged_in, label } => {
             app.global::<AppState>().set_logged_in(logged_in);
