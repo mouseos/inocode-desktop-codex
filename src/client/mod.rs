@@ -26,7 +26,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 pub use approval::{approval_info, elicitation_questions};
-pub use parse::{history_from_thread, parse_account, parse_models, parse_threads, rate_limit_text, tool_detail, tool_text, is_running, clean_title, guardian_event, approve_by_id_params, shell_inner, unescape_command};
+pub use parse::{history_from_thread, parse_account, parse_models, parse_threads, rate_limit_text, tool_detail, tool_text, one_line, is_running, clean_title, guardian_event, approve_by_id_params, shell_inner, unescape_command};
 pub use transport::{base_client_version, find_inocode, probe_models};
 pub use types::*;
 
@@ -50,6 +50,12 @@ mod tests {
     fn command_item_text() {
         let item = json!({"type":"commandExecution","id":"a","command":"dir","status":"completed","exitCode":2});
         assert_eq!(tool_text(&item).unwrap(), "実行: dir — 完了 (終了コード 2)");
+        // a command of several lines is one line in the row
+        let many = json!({"type":"commandExecution","command":"$urls = @{
+  'a' = 'x';
+  'b' = 'y'
+}","status":"completed"});
+        assert_eq!(tool_text(&many).unwrap(), "実行: $urls = @{ 'a' = 'x'; 'b' = 'y' } — 完了");
         assert_eq!(tool_text(&json!({"type":"reasoning","status":"completed"})).unwrap(), "思考しました");
         assert!(tool_text(&json!({"type":"userMessage"})).is_none());
         let out = json!({"type":"commandExecution","command":"dir","aggregatedOutput":"a\nb"});

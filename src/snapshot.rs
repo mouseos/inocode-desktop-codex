@@ -29,6 +29,9 @@ fn run_step(app: &AppWindow, step: String) {
         if let Some(a) = first {
             app.global::<AppState>().invoke_decide(a.key, d.into());
         }
+    } else if let Some(id) = step.strip_prefix("@open-id:") {
+        // "@open-id:<thread id>": that session (a click on it in the list).
+        app.global::<AppState>().invoke_open_thread(id.trim().into());
     } else if let Some(word) = step.strip_prefix("@open:") {
         // "@open:<words>": the first session whose title has the words (a click on it in the list).
         let id = STATE.with(|s| s.borrow().threads.iter().find(|t| t.title.contains(word)).map(|t| t.id.clone()));
@@ -527,12 +530,21 @@ pub(crate) fn install(app: &AppWindow) {
             let weak = app.as_weak();
             let base = std::path::PathBuf::from(&path);
             let mut n = 0u32;
+            // INOCODE_GUI_SCROLL_ROWS=<k>: once the chat has rows, each picture after the next
+            // brings row 0, k, 2k ... to the top (to look at a long chat from its start).
+            let rows = env_num("INOCODE_GUI_SCROLL_ROWS", 0);
+            let mut at = 0u64;
             let t = slint::Timer::default();
             t.start(slint::TimerMode::Repeated, Duration::from_secs(every), move || {
                 if let Some(app) = weak.upgrade() {
                     n += 1;
                     let stem = base.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
                     write(&app, &base.with_file_name(format!("{stem}-{n}.png")));
+                    let count = app.global::<AppState>().get_messages().row_count() as u64;
+                    if rows > 0 && count > 0 && at < count {
+                        app.invoke_scroll_to(at as i32);
+                        at += rows;
+                    }
                 }
             });
             extra.push(t);

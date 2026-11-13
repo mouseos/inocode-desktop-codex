@@ -25,8 +25,18 @@ pub(super) fn status_label(status: &str) -> &'static str {
 }
 
 /// One-line description of a command / tool item, or None for item kinds that
-/// are not shown as rows.
+/// are not shown as rows. A command written over several lines is put on one line (the row is
+/// one line high: the other lines were drawn over the rows below it).
 pub fn tool_text(item: &Value) -> Option<String> {
+    tool_text_lines(item).map(|t| one_line(&t))
+}
+
+/// The lines of a text as one line: each line break (and the spaces around it) is one space.
+pub fn one_line(text: &str) -> String {
+    text.lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ")
+}
+
+fn tool_text_lines(item: &Value) -> Option<String> {
     let status = status_label(item.get("status").and_then(Value::as_str).unwrap_or(""));
     let suffix = if status.is_empty() { String::new() } else { format!(" — {status}") };
     match item.get("type").and_then(Value::as_str)? {
