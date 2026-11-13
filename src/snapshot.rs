@@ -151,6 +151,26 @@ pub(crate) fn install(app: &AppWindow) {
         });
         extra.push(t);
     }
+    // INOCODE_GUI_REVERT=1 (with INOCODE_GUI_LONG): the history is cut back to its first message,
+    // as a rewind or a regenerate does, and a new turn's rows come in after it.
+    if std::env::var("INOCODE_GUI_REVERT").is_ok() {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, Duration::from_secs(delay + 3), move || {
+            let Some(app) = weak.upgrade() else { return };
+            let first = app.global::<AppState>().get_messages().row_data(0);
+            let Some(first) = first else { return };
+            let rows = vec![client::Msg { id: "m0".into(), role: "user".into(), text: first.text.to_string(), detail: String::new(), turn_id: String::new(), item_index: 0 }];
+            STATE.with(|s| crate::events::apply(&app, s, client::Event::History(rows)));
+            crate::view::messages_with(&app, |m| {
+                crate::view::push(m, "", "assistant", "まずプロジェクトの既存ノートを確認し、そのうえで各ランタイムの公式ドキュメントを当たります。");
+                crate::view::upsert_tool(m, "x1", "実行: $urls = @('https://tokio.rs', 'https://docs.rs/smol')", Some("$ ...\nok"));
+                crate::view::upsert_tool(m, "x2", "5秒間思考しました", Some("考えた。"));
+                crate::view::upsert_tool(m, "x3", "実行: Get-Content -Raw .\\research\\smol_readme.html — 完了", Some("$ Get-Content\n<html>"));
+            });
+        });
+        extra.push(t);
+    }
     // INOCODE_GUI_THINK=1: thinking and search rows (running, done, with a body), through the
     // same functions the server's items go through; INOCODE_GUI_THINK=busy also shows the turn running.
     if let Ok(mode) = std::env::var("INOCODE_GUI_THINK") {
