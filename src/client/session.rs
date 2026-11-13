@@ -496,7 +496,7 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
     }
 
     pub(super) fn list_threads(&mut self) -> Result<(), String> {
-        self.request("thread/list", json!({ "limit": 50 }), Pending::ThreadList)
+        self.request("thread/list", json!({ "limit": 50, "modelProviders": [] }), Pending::ThreadList)
     }
 
     pub(super) fn handle(&mut self, value: &Value) -> Result<(), String> {
@@ -552,6 +552,15 @@ impl<'a, F: Fn(Event)> Session<'a, F> {
                 Pending::Requirements => return self.request("config/read", json!({ "includeLayers": false }), Pending::Config),
                 Pending::Config => return self.begin_thread(),
                 Pending::Daybreak => {}
+                // A new session that never got a message is not saved: after the server restarted
+                // it is gone. Start a new one instead of showing the error.
+                Pending::ThreadResume if message.contains("no rollout found") || message.contains("thread not loaded") => {
+                    *self.active_thread = None;
+                    self.untitled = None;
+                    self.turn_id = None;
+                    let params = thread_start_params(self.settings);
+                    return self.request("thread/start", params, Pending::ThreadStart);
+                }
                 // No title: the first words of the message stay as it.
                 Pending::TitleThread | Pending::TitleTurn | Pending::TitleName => {
                     super::notify::rpc_log(&format!("title error: {message}"));

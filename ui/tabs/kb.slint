@@ -52,6 +52,12 @@ export struct KbSection {
 }
 
 // チェックリストの 1 項目
+// A step of the model's working checklist (update_plan). status: 0 pending, 1 in progress, 2 done.
+export struct KbPlanStep {
+    text: string,
+    status: int,
+}
+
 export struct KbCheck {
     text: string,
     detail: string,
@@ -112,6 +118,8 @@ export global KbState {
     in property <[string]> roles;
     in property <string> role;
     in property <[KbCheck]> checks;
+    // The working checklist of the open thread (update_plan).
+    in property <[KbPlanStep]> plan;
     in-out property <string> check-add;
 
     callback sub-changed(int);
@@ -475,6 +483,33 @@ export component ChecklistPanel inherits Rectangle {
             width: parent.width - 24px;
             spacing: 0px;
             alignment: start;
+            for p in KbState.plan: Rectangle {
+                height: pr.preferred-height + 10px;
+                pr := HorizontalLayout {
+                    y: 5px;
+                    spacing: 8px;
+                    Rectangle {
+                        width: 14px;
+                        height: 14px;
+                        y: 2px;
+                        border-radius: 7px;
+                        border-width: 1.5px;
+                        border-color: p.status == 2 ? #3fb06d : p.status == 1 ? Theme.fg : Theme.fg-tertiary;
+                        background: p.status == 2 ? #3fb06d : transparent;
+                        Text { text: p.status == 2 ? "✓" : ""; color: white; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                        if p.status == 1: Rectangle { width: 6px; height: 6px; border-radius: 3px; background: Theme.fg; }
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: p.text;
+                        color: p.status == 2 ? Theme.fg-secondary : Theme.fg;
+                        font-size: 12px;
+                        font-weight: p.status == 1 ? 600 : 400;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+            if KbState.plan.length > 0 && (KbState.roles.length > 0 || KbState.checks.length > 0): Rectangle { height: 12px; }
             if KbState.roles.length > 0: Flickable {
                 height: 32px;
                 content-width: rc.preferred-width;

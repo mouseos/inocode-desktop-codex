@@ -229,6 +229,10 @@ impl<F: Fn(Event)> Session<'_, F> {
                     };
                     detail.push_str(&format!("\n[{mark}] {}", s.get("step").and_then(Value::as_str).unwrap_or("")));
                 }
+                (self.on_event)(Event::Notify {
+                    method: "gui/plan".into(),
+                    params: json!({ "threadId": params.get("threadId").cloned().unwrap_or(Value::Null), "plan": steps.clone() }),
+                });
                 (self.on_event)(Event::Note {
                     id: "turn-plan".into(),
                     text: format!("{done}/{} 件のタスク", steps.len()),

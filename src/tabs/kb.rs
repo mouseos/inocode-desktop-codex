@@ -5,7 +5,7 @@
 
 use super::Host;
 use crate::client::Event;
-use crate::{AppWindow, KbAct, KbCheck, KbHist, KbKv, KbQuote, KbRow, KbSection, KbState};
+use crate::{AppWindow, KbAct, KbCheck, KbHist, KbKv, KbPlanStep, KbQuote, KbRow, KbSection, KbState};
 use serde_json::{json, Value};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
@@ -650,6 +650,7 @@ fn refresh_checklist(app: &AppWindow, host: &Host) {
 }
 
 fn render_checklist(app: &AppWindow) {
+    render_plan(app);
     let st = app.global::<KbState>();
     K.with(|k| {
         let k = k.borrow();
@@ -1100,8 +1101,37 @@ pub fn checklist_opened(app: &AppWindow, host: &Host) {
     refresh_checklist(app, host);
 }
 
+thread_local! {
+    /// The last update_plan of each thread (thread id -> steps), for the checklist panel.
+    static PLANS: RefCell<std::collections::HashMap<String, Vec<Value>>> = RefCell::new(std::collections::HashMap::new());
+}
+
+pub(crate) fn render_plan(app: &AppWindow) {
+    let active = crate::state::STATE.with(|s| s.borrow().active.clone());
+    let steps = PLANS.with(|p| p.borrow().get(&active).cloned().unwrap_or_default());
+    let rows: Vec<KbPlanStep> = steps
+        .iter()
+        .map(|s| KbPlanStep {
+            text: s.get("step").and_then(Value::as_str).unwrap_or("").into(),
+            status: match s.get("status").and_then(Value::as_str) {
+                Some("completed") => 2,
+                Some("inProgress" | "in_progress") => 1,
+                _ => 0,
+            },
+        })
+        .collect();
+    app.global::<KbState>().set_plan(ModelRc::new(VecModel::from(rows)));
+}
+
 pub fn event(app: &AppWindow, host: &Host, event: &Event) {
     match event {
+        Event::Notify { method, params } if method == "gui/plan" => {
+            let tid = params.get("threadId").and_then(Value::as_str).map(str::to_string)
+                .unwrap_or_else(|| crate::state::STATE.with(|s| s.borrow().active.clone()));
+            let steps = params.get("plan").and_then(Value::as_array).cloned().unwrap_or_default();
+            PLANS.with(|p| p.borrow_mut().insert(tid, steps));
+            render_plan(app);
+        }
         Event::Rpc { tag, result } if tag.starts_with("kb.") => on_rpc(app, host, tag, result),
         Event::Notify { method, params } if method == "inocode/kb/changed" => {
             if s(params, "area") == "checklist" {

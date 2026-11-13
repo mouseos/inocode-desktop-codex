@@ -64,7 +64,7 @@ pub(crate) fn refresh() {
         let d = d.borrow();
         (d.sort, d.filter)
     });
-    let mut params = json!({ "limit": 50, "sortKey": sort });
+    let mut params = json!({ "limit": 50, "sortKey": sort, "modelProviders": [] });
     if filter == 3 {
         params["archived"] = json!(true);
     }
@@ -78,7 +78,7 @@ fn load_more() {
         (d.sort, d.filter, d.cursor.clone())
     });
     let Some(cursor) = cursor else { return };
-    let mut params = json!({ "limit": 50, "sortKey": sort, "cursor": cursor });
+    let mut params = json!({ "limit": 50, "sortKey": sort, "cursor": cursor, "modelProviders": [] });
     if filter == 3 {
         params["archived"] = json!(true);
     }

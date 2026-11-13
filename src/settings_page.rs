@@ -420,7 +420,7 @@ fn load(app: &AppWindow, section: i32) {
             rpc("spage.config", "config/read", json!({ "includeLayers": false }));
         }
         S::Shortcuts => set_rows(app, shortcut_rows()),
-        S::Archive => rpc("spage.archive", "thread/list", json!({ "limit": 50, "archived": true })),
+        S::Archive => rpc("spage.archive", "thread/list", json!({ "limit": 50, "archived": true, "modelProviders": [] })),
         S::Account => {
             s.set_layout(2);
             s.set_loading(false);

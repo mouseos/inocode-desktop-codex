@@ -128,6 +128,9 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
             crate::coding::render_approvals(app, &st);
             app.global::<AppState>().set_session_title(if title.is_empty() { "新しいセッション".into() } else { SharedString::from(title) });
             rebuild_projects(app, &st);
+            drop(st);
+            // The checklist panel shows the working checklist of this thread.
+            crate::tabs::kb::render_plan(app);
         }
         Event::History(list) => {
             let rows: Vec<Message> = list
