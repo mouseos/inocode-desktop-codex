@@ -1,5 +1,6 @@
 import { Theme } from "theme.slint";
 import { Icon, Glyph } from "icons.slint";
+import { Field } from "controls.slint";
 
 // The cards of the chat that are not a message: a guard that stopped an operation (a shield, a warm
 // background), and what was registered in the knowledge or the evidence (the kind's icon, a blue
@@ -33,11 +34,20 @@ export struct ChatCard {
     pressable: bool,
     // Pale: nothing can be done with it
     dim: bool,
+    // A small "却下" at the end of the title line (a record that was adopted)
+    can-reject: bool,
+    // The reason field with 却下する / やめる is open
+    asking: bool,
+    // Rejected: the title is struck through, and the reason (if one was given) under it
+    rejected: bool,
+    reason: string,
 }
 
 export global CardActions {
     // A button of the card in row `index` of the chat ("" is the card itself).
     callback act(int, string);
+    // Reject the card in row `index`, with the reason typed (may be empty).
+    callback reject(int, string);
 }
 
 component CardButtonView inherits Rectangle {
@@ -83,8 +93,22 @@ export component CardView inherits Rectangle {
             spacing: 4px;
             HorizontalLayout {
                 spacing: 8px;
-                Text { text: root.card.title; color: root.card.dim ? Theme.fg-tertiary : Theme.fg; font-size: 13px; font-weight: 700; overflow: elide; horizontal-stretch: 1; }
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: title.preferred-height;
+                    title := Text { x: 0; width: parent.width; text: root.card.title; color: root.card.dim ? Theme.fg-secondary : Theme.fg; font-size: 13px; font-weight: 700; overflow: elide; }
+                    if root.card.rejected: Rectangle { x: 0; y: parent.height / 2; width: min(title.preferred-width, parent.width); height: 1px; background: Theme.fg-secondary; }
+                }
                 if root.card.status != "": Text { text: root.card.status; color: Theme.fg-secondary; font-size: 11px; vertical-alignment: center; }
+                if root.card.can-reject && !root.card.asking: Rectangle {
+                    width: rj.preferred-width + 12px;
+                    height: 20px;
+                    y: -2px;
+                    border-radius: 5px;
+                    background: rja.has-hover ? Theme.hover : transparent;
+                    rj := Text { text: "却下"; color: rja.has-hover ? Theme.danger : Theme.fg-secondary; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+                    rja := TouchArea { mouse-cursor: pointer; clicked => { CardActions.act(root.index, "ask-reject"); } }
+                }
             }
             if root.card.sub != "": Text {
                 text: root.card.sub;
@@ -101,6 +125,28 @@ export component CardView inherits Rectangle {
                     horizontal-stretch: 1;
                     if root.card.quote-head != "": Text { text: root.card.quote-head; color: Theme.fg-tertiary; font-size: 11px; overflow: elide; }
                     for l in root.card.quote-lines: Text { text: l; color: root.card.quote-dim ? Theme.fg-tertiary : Theme.fg; font-size: 12px; overflow: elide; }
+                }
+            }
+            if root.card.rejected && root.card.reason != "": Text { text: root.card.reason; color: Theme.fg-secondary; font-size: 12px; wrap: word-wrap; }
+            if root.card.asking: HorizontalLayout {
+                spacing: 6px;
+                padding-top: 2px;
+                why := Field { horizontal-stretch: 1; height: 28px; placeholder: "理由（任意）"; accepted(t) => { CardActions.reject(root.index, t); } }
+                Rectangle {
+                    width: dt.preferred-width + 24px;
+                    height: 28px;
+                    border-radius: 6px;
+                    background: Theme.danger.with-alpha(da.has-hover ? 0.32 : 0.22);
+                    dt := Text { text: "却下する"; color: Theme.danger; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
+                    da := TouchArea { mouse-cursor: pointer; clicked => { CardActions.reject(root.index, why.text); } }
+                }
+                Rectangle {
+                    width: ct.preferred-width + 24px;
+                    height: 28px;
+                    border-radius: 6px;
+                    background: ca.has-hover ? Theme.pressed : Theme.selected;
+                    ct := Text { text: "やめる"; color: Theme.fg; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
+                    ca := TouchArea { mouse-cursor: pointer; clicked => { CardActions.act(root.index, "cancel-reject"); } }
                 }
             }
             if root.card.buttons.length > 0: HorizontalLayout {

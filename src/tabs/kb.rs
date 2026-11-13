@@ -311,6 +311,8 @@ fn clear_detail(st: &KbState<'_>) {
     st.set_d_links(ModelRc::default());
     st.set_d_backlinks(ModelRc::default());
     st.set_d_acts(ModelRc::default());
+    st.set_rejecting(false);
+    st.set_reject_reason("".into());
 }
 
 fn act(id: &str, label: &str, primary: bool) -> KbAct {
@@ -368,6 +370,7 @@ fn render(app: &AppWindow) {
                     }
                     st.set_d_body(strs(if s(f, "body").is_empty() { vec![] } else { vec![s(f, "body").to_string()] }));
                     st.set_d_kv(model(failure_fields(f, None).into_iter().map(|(a, b)| KbKv { k: a.into(), v: b.into() }).collect()));
+                    st.set_d_acts(model(vec![act("reject", "却下", false)]));
                 } else {
                     clear_detail(&st);
                 }
@@ -489,6 +492,20 @@ fn detail_prohib(st: &KbState<'_>, p: &Value) {
     st.set_d_acts(model(vec![act("proh-edit", "編集", true), act("proh-retract", "撤回", false)]));
 }
 
+/// The last change of a page is the model's (a rejection takes it back).
+fn last_change_by_model(p: &Value) -> bool {
+    p.get("revs").and_then(Value::as_array).and_then(|a| a.last()).map(|r| s(r, "by") == "model").unwrap_or(false)
+}
+
+/// What `inocode/kb/reject` takes out from the open sub-tab: the selected failure record or page.
+fn reject_target(k: &K, sub: i32) -> Option<(&'static str, String)> {
+    match sub {
+        SUB_FAIL => usize::try_from(k.sel).ok().and_then(|i| k.failures.get(i)).map(|f| ("failureCase", s(f, "id").to_string())),
+        SUB_PAGES => k.sel_title.clone().map(|t| ("page", t)),
+        _ => None,
+    }
+}
+
 fn detail_page(st: &KbState<'_>, p: &Value) {
     clear_detail(st);
     st.set_has_detail(true);
@@ -517,6 +534,9 @@ fn detail_page(st: &KbState<'_>, p: &Value) {
         acts.push(act("page-confirm", "確認済みにする", true));
     }
     acts.push(act("page-edit", "編集", confirmed));
+    if last_change_by_model(p) {
+        acts.push(act("reject", "却下", false));
+    }
     acts.push(act("page-delete", "削除", false));
     st.set_d_acts(model(acts));
 }
@@ -925,6 +945,7 @@ pub fn install(app: &AppWindow, host: &Host) {
                     h.rpc("kb.page.saved", "inocode/kb/page/write", json!({ "cwd": cwd, "title": s(&p, "title"), "body": s(&p, "body"), "baseRev": s(&p, "rev"), "by": "user", "confirm": true }));
                 }
             }
+            "reject" => app.global::<KbState>().set_rejecting(true),
             "page-delete" => {
                 let t = K.with(|k| k.borrow().sel_title.clone());
                 if let Some(t) = t {
@@ -934,6 +955,26 @@ pub fn install(app: &AppWindow, host: &Host) {
             }
             _ => {}
         }
+    });
+
+    let (weak, h) = (app.as_weak(), host.clone());
+    st.on_reject(move |reason| {
+        let Some(app) = weak.upgrade() else { return };
+        let st = app.global::<KbState>();
+        let target = K.with(|k| reject_target(&k.borrow(), st.get_sub()));
+        let Some((kind, id)) = target.filter(|(_, id)| !id.is_empty()) else { return };
+        let mut params = json!({ "cwd": cwd(&app), "kind": kind, "id": id, "by": "user" });
+        if !reason.trim().is_empty() {
+            params["reason"] = json!(reason.trim());
+        }
+        st.set_rejecting(false);
+        st.set_reject_reason("".into());
+        K.with(|k| {
+            let mut k = k.borrow_mut();
+            k.sel = -1;
+            k.sel_title = None;
+        });
+        h.rpc("kb.write", "inocode/kb/reject", params);
     });
 
     let (weak, h) = (app.as_weak(), host.clone());

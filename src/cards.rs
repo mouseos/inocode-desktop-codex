@@ -1,9 +1,10 @@
 //! The cards of the chat that are not a message: a guard rule that stopped an operation (with the
 //! words of the user it comes from and a way to relax it), and what a tool registered in the
-//! knowledge or the evidence (with approve / reject for a candidate). Data: the notification
+//! knowledge or the evidence (everything is adopted at once; the user rejects what is wrong, with
+//! an optional reason). Data: the notification
 //! inocode/guard/fired and the result of a tool call; contract and fixtures: ref/docs/64 §8 §9,
 //! ref/contract-fixtures/guard-fired-card.json, evidence-record-result.json, kb-relaxation-add-ui.json,
-//! kb-candidate-*.json. Only the user can relax, approve or reject: the buttons are the screen's own.
+//! kb-candidate-*.json. Only the user can relax or reject: the buttons are the screen's own.
 
 use crate::state::STATE;
 use crate::view::messages_with;
@@ -17,6 +18,8 @@ thread_local! {
     static HANDLE: RefCell<Option<Rc<client::Handle>>> = const { RefCell::new(None) };
     static INFO: RefCell<HashMap<String, Info>> = RefCell::new(HashMap::new());
     static DEMO_TIMER: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
+    /// The rejections still to send for a card (one at a time: two of them can touch one page).
+    static QUEUE: RefCell<HashMap<String, Vec<Value>>> = RefCell::new(HashMap::new());
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -28,15 +31,19 @@ enum GState {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum RState {
-    /// What the tool said (registered, candidate or denied)
+    /// What the tool said (registered or denied)
     Result,
+    /// The reason field is open
+    Asking,
+    /// Being taken out (the requests are on their way)
+    Rejecting,
     Rejected,
 }
 
 #[derive(Clone, Debug)]
 enum Info {
     Guard { data: Value, state: GState, expanded: bool, relaxation: String, scope: String },
-    Reg { data: Value, state: RState },
+    Reg { data: Value, state: RState, reason: String },
 }
 
 /// What a card shows (the screen's struct is made of it).
@@ -55,6 +62,10 @@ struct Card {
     buttons: Vec<(String, String, bool, bool)>,
     pressable: bool,
     dim: bool,
+    can_reject: bool,
+    asking: bool,
+    rejected: bool,
+    reason: String,
 }
 
 const SHIELD: &str = "\u{e9e0}";
@@ -174,12 +185,26 @@ fn op_label(op: &str) -> &'static str {
     }
 }
 
-fn reg_card(data: &Value, state: RState) -> Card {
+fn draft_mark(one: &Value) -> &'static str {
+    if one.get("draft").and_then(Value::as_bool).unwrap_or(false) { " · 下書き" } else { "" }
+}
+
+/// The records of a card that were registered (a batch, or the one).
+fn registered(data: &Value) -> Vec<&Value> {
+    let all: Vec<&Value> = match data.get("items").and_then(Value::as_array) {
+        Some(a) if !a.is_empty() => a.iter().collect(),
+        _ => vec![data],
+    };
+    all.into_iter().filter(|i| s(i, "status") == "registered").collect()
+}
+
+fn reg_card(data: &Value, state: RState, reason: &str) -> Card {
+    let mut c = Card::default();
     // A batch: one card with the kind and the number, and the first three.
     if let Some(items) = data.get("items").and_then(Value::as_array).filter(|a| a.len() > 1) {
         let kind = items.first().map(|i| s(i, "kind")).unwrap_or("");
         let count = data.get("count").and_then(Value::as_i64).unwrap_or(items.len() as i64);
-        return Card {
+        c = Card {
             icon: kind_icon(kind),
             tone: 2,
             title: format!("{} {} 件", kind_label(kind), count),
@@ -188,38 +213,62 @@ fn reg_card(data: &Value, state: RState) -> Card {
             pressable: true,
             ..Default::default()
         };
-    }
-    let one = data.get("items").and_then(Value::as_array).and_then(|a| a.first()).unwrap_or(data);
-    let kind = s(one, "kind");
-    let op = op_label(s(one, "op"));
-    let mut c = Card { icon: kind_icon(kind), title: s(one, "title").to_string(), ..Default::default() };
-    let what = if op.is_empty() { kind_label(kind).to_string() } else { format!("{} · {}", kind_label(kind), op) };
-    if state == RState::Rejected {
-        c.dim = true;
-        c.status = "却下しました".to_string();
-        c.sub = what;
-        return c;
-    }
-    match s(one, "status") {
-        "denied" => {
+    } else {
+        let one = data.get("items").and_then(Value::as_array).and_then(|a| a.first()).unwrap_or(data);
+        let kind = s(one, "kind");
+        let op = op_label(s(one, "op"));
+        c.icon = kind_icon(kind);
+        c.title = s(one, "title").to_string();
+        c.sub = if op.is_empty() { format!("{}{}", kind_label(kind), draft_mark(one)) } else { format!("{} · {}{}", kind_label(kind), op, draft_mark(one)) };
+        if s(one, "status") == "denied" {
             c.tone = 3;
             c.dim = true;
             c.status = "拒否".to_string();
             c.sub = s(one, "reason").to_string();
+            return c;
         }
-        "candidate" => {
-            c.status = "承認待ち".to_string();
-            c.sub = what;
-            c.buttons = vec![("approve".to_string(), "承認".to_string(), true, true), ("reject".to_string(), "却下".to_string(), true, false)];
+        c.tone = 2;
+        c.status = "登録しました".to_string();
+        c.pressable = true;
+    }
+    match state {
+        RState::Rejected => {
+            c.tone = 0;
+            c.dim = true;
+            c.pressable = false;
+            c.rejected = true;
+            c.status = "却下しました".to_string();
+            c.reason = reason.to_string();
         }
-        _ => {
-            c.tone = 2;
-            c.status = "登録しました".to_string();
-            c.sub = what;
-            c.pressable = true;
+        RState::Rejecting => {
+            c.status = "却下しています".to_string();
+            c.pressable = false;
         }
+        RState::Asking => {
+            c.can_reject = true;
+            c.asking = true;
+        }
+        RState::Result => c.can_reject = !registered(data).is_empty(),
     }
     c
+}
+
+/// What `inocode/kb/reject` needs to take one record out.
+fn reject_params(cwd: &str, one: &Value, reason: &str) -> Value {
+    let kind = s(one, "kind");
+    let id = if s(one, "id").is_empty() { s(one, "title") } else { s(one, "id") };
+    let mut p = json!({ "cwd": cwd, "kind": kind, "id": id, "by": "user" });
+    if !reason.trim().is_empty() {
+        p["reason"] = json!(reason.trim());
+    }
+    if kind == "evidence" {
+        p["id"] = json!(if s(one, "page").is_empty() { id } else { s(one, "page") });
+        if !s(one, "sourceRef").is_empty() {
+            p["claim"] = json!(if s(one, "claim").is_empty() { s(one, "title") } else { s(one, "claim") });
+            p["sourceRef"] = json!(s(one, "sourceRef"));
+        }
+    }
+    p
 }
 
 /// A result of a tool that is a card: an object with a kind and a status, found in the text of the
@@ -266,6 +315,10 @@ fn to_row(id: &str, c: &Card) -> Message {
             buttons: ModelRc::from(Rc::new(VecModel::from(buttons))),
             pressable: c.pressable,
             dim: c.dim,
+            can_reject: c.can_reject,
+            asking: c.asking,
+            rejected: c.rejected,
+            reason: c.reason.as_str().into(),
         },
         ..Default::default()
     }
@@ -274,7 +327,7 @@ fn to_row(id: &str, c: &Card) -> Message {
 fn card_of(info: &Info) -> Card {
     match info {
         Info::Guard { data, state, expanded, scope, .. } => guard_card(data, *state, *expanded, scope),
-        Info::Reg { data, state } => reg_card(data, *state),
+        Info::Reg { data, state, reason } => reg_card(data, *state, reason),
     }
 }
 
@@ -322,7 +375,7 @@ pub(crate) fn on_notify(app: &AppWindow, method: &str, params: &Value) {
             let Some(result) = params.get("result").filter(|r| !r.is_null()) else { return };
             let Some(card) = find_card(result) else { return };
             let id = format!("reg:{}", s(params, "id"));
-            set_info(app, &id, Info::Reg { data: card, state: RState::Result });
+            set_info(app, &id, Info::Reg { data: card, state: RState::Result, reason: String::new() });
         }
         _ => {}
     }
@@ -342,6 +395,21 @@ fn status(app: &AppWindow, text: &str) {
 /// Go to what a card leads to: the tab, its part and the record (`target` of the server).
 fn open_target(app: &AppWindow, tab: &str, sub: &str, reference: &str) {
     crate::tabs::kb::go_target(app, tab, sub, reference);
+}
+
+/// The user rejects what a card registered (every record of it), with the reason typed.
+fn reject(app: &AppWindow, index: usize, reason: &str) {
+    let model = app.global::<AppState>().get_messages();
+    let Some(row) = model.row_data(index) else { return };
+    let id = row.id.to_string();
+    let Some(Info::Reg { data, .. }) = INFO.with(|i| i.borrow().get(&id).cloned()) else { return };
+    let cwd = STATE.with(|st| st.borrow().active_cwd.clone());
+    let mut queue: Vec<Value> = registered(&data).into_iter().map(|one| reject_params(&cwd, one, reason)).collect();
+    queue.reverse();
+    let Some(first) = queue.pop() else { return };
+    QUEUE.with(|q| q.borrow_mut().insert(id.clone(), queue));
+    set_info(app, &id, Info::Reg { data, state: RState::Rejecting, reason: reason.trim().to_string() });
+    rpc(format!("card.reject|{id}"), "inocode/kb/reject", first);
 }
 
 fn act(app: &AppWindow, index: usize, button: &str) {
@@ -374,11 +442,8 @@ fn act(app: &AppWindow, index: usize, button: &str) {
         (Info::Guard { relaxation, .. }, "revoke") => {
             rpc(format!("card.revoke|{id}"), "inocode/kb/relaxation/revoke", json!({ "cwd": cwd, "id": relaxation }));
         }
-        (Info::Reg { data, .. }, b @ ("approve" | "reject")) => {
-            let one = data.get("items").and_then(Value::as_array).and_then(|a| a.first()).unwrap_or(&data);
-            let cand = if s(one, "id").is_empty() { s(&data, "id") } else { s(one, "id") };
-            rpc(format!("card.{b}|{id}"), &format!("inocode/kb/candidate/{b}"), json!({ "cwd": cwd, "id": cand }));
-        }
+        (Info::Reg { data, reason, .. }, "ask-reject") => set_info(app, &id, Info::Reg { data, state: RState::Asking, reason }),
+        (Info::Reg { data, reason, .. }, "cancel-reject") => set_info(app, &id, Info::Reg { data, state: RState::Result, reason }),
         (Info::Reg { data, .. }, "") => {
             let one = data.get("items").and_then(Value::as_array).and_then(|a| a.first()).unwrap_or(&data);
             let t = |k: &str| one.pointer(&format!("/target/{k}")).and_then(Value::as_str).unwrap_or("").to_string();
@@ -403,18 +468,18 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
         ("revoke", Info::Guard { data, scope, .. }, Ok(_)) => {
             set_info(app, &id, Info::Guard { data, state: GState::Revoked, expanded: false, relaxation: String::new(), scope });
         }
-        ("approve", Info::Reg { mut data, .. }, Ok(v)) => {
-            // It is registered now: the kind and the target the server gave.
-            let one = if data.get("items").is_some() { data.get_mut("items").and_then(|a| a.get_mut(0)) } else { Some(&mut data) };
-            if let Some(o) = one {
-                o["status"] = json!("registered");
-                if let Some(t) = v.get("target") {
-                    o["target"] = t.clone();
-                }
+        ("reject", Info::Reg { data, reason, .. }, Ok(_)) => match QUEUE.with(|q| q.borrow_mut().get_mut(&id).and_then(Vec::pop)) {
+            Some(next) => rpc(format!("card.reject|{id}"), "inocode/kb/reject", next),
+            None => {
+                QUEUE.with(|q| q.borrow_mut().remove(&id));
+                set_info(app, &id, Info::Reg { data, state: RState::Rejected, reason });
             }
-            set_info(app, &id, Info::Reg { data, state: RState::Result });
+        },
+        ("reject", Info::Reg { data, reason, .. }, Err(e)) => {
+            QUEUE.with(|q| q.borrow_mut().remove(&id));
+            set_info(app, &id, Info::Reg { data, state: RState::Result, reason });
+            status(app, &format!("却下できませんでした: {}", crate::errmsg::short(e)));
         }
-        ("reject", Info::Reg { data, .. }, Ok(_)) => set_info(app, &id, Info::Reg { data, state: RState::Rejected }),
         (_, _, Err(e)) => status(app, &format!("できませんでした: {}", crate::errmsg::short(e))),
         _ => {}
     }
@@ -426,6 +491,12 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
     app.global::<CardActions>().on_act(move |index, button| {
         if let Some(app) = weak.upgrade() {
             act(&app, index.max(0) as usize, button.as_str());
+        }
+    });
+    let weak = app.as_weak();
+    app.global::<CardActions>().on_reject(move |index, reason| {
+        if let Some(app) = weak.upgrade() {
+            reject(&app, index.max(0) as usize, reason.as_str());
         }
     });
     if std::env::var("INOCODE_GUI_DEMO").map(|v| v == "cards").unwrap_or(false) {
@@ -450,11 +521,19 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
             let tool = |id: &str, result: Value| json!({ "id": id, "type": "dynamicToolCall", "tool": "record_evidence", "result": result });
             let one = |kind: &str, op: &str, title: &str, status: &str| json!({ "kind": kind, "op": op, "title": title, "status": status, "requiresApproval": status == "candidate", "target": { "tab": "evidence", "sub": "claims", "ref": "x" } });
             on_notify(&app, "gui/toolResult", &tool("r1", one("evidence", "create", "Widget X is 1,200 yen", "registered")));
-            on_notify(&app, "gui/toolResult", &tool("r2", one("checklist", "add", "実装前に仕様を確認する", "candidate")));
+            on_notify(&app, "gui/toolResult", &tool("r2", one("checklist", "add", "実装前に仕様を確認する", "registered")));
             let mut denied = one("evidence", "create", "Widget Y", "denied");
             denied["reason"] = json!("引用が原文に含まれません");
             on_notify(&app, "gui/toolResult", &tool("r3", denied));
             on_notify(&app, "gui/toolResult", &tool("r4", json!({ "count": 3, "items": [one("evidence", "create", "価格は 1,200 円", "registered"), one("evidence", "create", "在庫は 5 個", "registered"), one("evidence", "create", "送料は無料", "registered")] })));
+            // the reason field open, and one rejected with its reason
+            if let Some(Info::Reg { data, .. }) = INFO.with(|i| i.borrow().get("reg:r4").cloned()) {
+                set_info(&app, "reg:r4", Info::Reg { data, state: RState::Asking, reason: String::new() });
+            }
+            on_notify(&app, "gui/toolResult", &tool("r5", one("page", "create", "adb shell は fastboot 中に失敗する", "registered")));
+            if let Some(Info::Reg { data, .. }) = INFO.with(|i| i.borrow().get("reg:r5").cloned()) {
+                set_info(&app, "reg:r5", Info::Reg { data, state: RState::Rejected, reason: "fastboot は関係なかった".to_string() });
+            }
         });
         DEMO_TIMER.with(|t| *t.borrow_mut() = Some(timer));
     }
@@ -511,29 +590,47 @@ mod tests {
     }
 
     #[test]
-    fn a_registered_card_has_the_kind_and_goes_to_its_target() {
-        let c = reg_card(&one("evidence", "create", "Widget X", "registered"), RState::Result);
+    fn a_registered_card_can_be_rejected_with_an_optional_reason() {
+        let c = reg_card(&one("evidence", "create", "Widget X", "registered"), RState::Result, "");
         assert_eq!((c.title.as_str(), c.status.as_str(), c.sub.as_str(), c.tone, c.pressable), ("Widget X", "登録しました", "根拠 · 作成", 2, true));
-        let p = reg_card(&one("checklist", "add", "確認する", "candidate"), RState::Result);
-        assert_eq!(p.status, "承認待ち");
-        assert_eq!(p.buttons.iter().map(|b| b.0.as_str()).collect::<Vec<_>>(), vec!["approve", "reject"]);
-        assert!(!p.pressable);
+        assert!(c.can_reject && !c.asking && c.buttons.is_empty());
+        let mut draft = one("page", "create", "手順", "registered");
+        draft["draft"] = json!(true);
+        assert_eq!(reg_card(&draft, RState::Result, "").sub, "資料ページ · 作成 · 下書き");
+        let a = reg_card(&draft, RState::Asking, "");
+        assert!(a.asking && a.can_reject);
+        let r = reg_card(&draft, RState::Rejected, "古い");
+        assert!(r.dim && r.rejected && !r.can_reject && !r.pressable && r.status == "却下しました" && r.reason == "古い");
         let mut d = one("evidence", "create", "Y", "denied");
         d["reason"] = json!("引用が原文に含まれません");
-        let d = reg_card(&d, RState::Result);
-        assert!(d.dim && d.tone == 3 && d.sub == "引用が原文に含まれません" && d.buttons.is_empty());
-        let r = reg_card(&one("checklist", "add", "確認する", "candidate"), RState::Rejected);
-        assert!(r.dim && r.status == "却下しました" && r.buttons.is_empty());
+        let d = reg_card(&d, RState::Result, "");
+        assert!(d.dim && d.tone == 3 && d.sub == "引用が原文に含まれません" && !d.can_reject);
+    }
+
+    #[test]
+    fn a_rejection_names_the_record_the_server_takes_out() {
+        let mut e = one("evidence", "create", "税込み", "registered");
+        e["id"] = json!("Widget の価格");
+        e["page"] = json!("Widget の価格");
+        e["claim"] = json!("税込み（全文）");
+        e["sourceRef"] = json!("src-0001");
+        let p = reject_params("C:/p", &e, " 古い価格 ");
+        assert_eq!(p, json!({ "cwd": "C:/p", "kind": "evidence", "id": "Widget の価格", "by": "user", "reason": "古い価格", "claim": "税込み（全文）", "sourceRef": "src-0001" }));
+        let mut f = one("failureCase", "create", "adb", "registered");
+        f["id"] = json!("failure_case-0003");
+        assert_eq!(reject_params("C:/p", &f, ""), json!({ "cwd": "C:/p", "kind": "failureCase", "id": "failure_case-0003", "by": "user" }));
+        assert_eq!(reject_params("C:/p", &one("page", "create", "手順", "registered"), "")["id"], "手順");
     }
 
     #[test]
     fn several_registered_at_once_are_one_card() {
         let batch = json!({ "count": 4, "items": [one("evidence", "create", "a", "registered"), one("evidence", "create", "b", "registered"),
-            one("evidence", "create", "c", "registered"), one("evidence", "create", "d", "registered")] });
-        let c = reg_card(&batch, RState::Result);
+            one("evidence", "create", "c", "registered"), one("evidence", "create", "d", "denied")] });
+        let c = reg_card(&batch, RState::Result, "");
         assert_eq!(c.title, "根拠 4 件");
         assert_eq!(c.items, vec!["根拠 a", "根拠 b", "根拠 c"]);
-        assert!(c.pressable);
+        assert!(c.pressable && c.can_reject);
+        assert_eq!(registered(&batch).len(), 3, "a denied one is not taken out again");
     }
 
     #[test]

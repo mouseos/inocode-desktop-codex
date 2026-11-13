@@ -1,6 +1,7 @@
 import { Theme } from "../theme.slint";
 import { Icon, Glyph } from "../icons.slint";
 import { Tag, Button, StatusLabel, LineEdit, AreaEdit } from "g_widgets.slint";
+import { Field } from "../controls.slint";
 
 // 知識と根拠の作り直し(doc 60、契約は doc 61)の画面。寸法と配色は ref/mockups/knowledge-redesign/index.html の
 // とおり。値はすべてサーバー(inocode/kb/*)から来る。ID と列挙値は画面に出さない。
@@ -103,6 +104,9 @@ export global KbState {
     in property <string> d-links-heading;
     in property <[string]> d-backlinks;
     in property <[KbAct]> d-acts;
+    // 「却下」を押した: 理由(任意)の欄と、却下する / やめる
+    in-out property <bool> rejecting: false;
+    in-out property <string> reject-reason;
     // 概要
     in property <string> o-title;
     in property <[string]> o-body;
@@ -131,6 +135,7 @@ export global KbState {
     callback pick-chip(string);
     callback pick-link(string);
     callback act(string);
+    callback reject(string);
     callback revoke(int);
     callback create;
     callback save;
@@ -307,7 +312,23 @@ component Detail inherits Flickable {
         HorizontalLayout {
             spacing: 8px;
             alignment: start;
-            for a in KbState.d-acts: Button { label: a.label; primary: a.primary; clicked => { KbState.act(a.id); } }
+            if !KbState.rejecting: HorizontalLayout {
+                spacing: 8px;
+                for a in KbState.d-acts: Button { label: a.label; primary: a.primary; clicked => { KbState.act(a.id); } }
+            }
+        }
+        if KbState.rejecting: HorizontalLayout {
+            spacing: 6px;
+            why := Field { horizontal-stretch: 1; height: 28px; placeholder: "理由（任意）"; text <=> KbState.reject-reason; accepted(t) => { KbState.reject(t); } }
+            Rectangle {
+                width: dt.preferred-width + 24px;
+                height: 28px;
+                border-radius: 6px;
+                background: Theme.danger.with-alpha(da.has-hover ? 0.32 : 0.22);
+                dt := Text { text: "却下する"; color: Theme.danger; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
+                da := TouchArea { mouse-cursor: pointer; clicked => { KbState.reject(KbState.reject-reason); } }
+            }
+            Button { label: "やめる"; clicked => { KbState.rejecting = false; KbState.reject-reason = ""; } }
         }
     }
 }
