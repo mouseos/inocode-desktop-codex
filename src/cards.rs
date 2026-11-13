@@ -158,6 +158,8 @@ fn kind_label(kind: &str) -> &'static str {
         "checklist" => "チェックリスト",
         "relaxation" => "緩和",
         "overview" => "概要",
+        "failureCase" | "failure" => "失敗の記録",
+        "fact" => "事実",
         _ => "",
     }
 }
@@ -371,6 +373,24 @@ pub(crate) fn on_notify(app: &AppWindow, method: &str, params: &Value) {
             let relaxation = params.get("relaxationId").and_then(Value::as_str).unwrap_or("").to_string();
             set_info(app, &id, Info::Guard { data: params.clone(), state, expanded: false, relaxation, scope: if state == GState::Relaxed { scope } else { String::new() } });
         }
+        "inocode/tool/used" => {
+            // One of InoCode's own tools (knowledge, evidence, prohibitions): these calls are not
+            // items of the thread, so this is all the chat sees of them.
+            let active = STATE.with(|st| st.borrow().active.clone());
+            if s(params, "threadId") != active {
+                return;
+            }
+            let call = s(params, "callId").to_string();
+            let result = params.get("result").cloned().unwrap_or(Value::Null);
+            match find_card(&result) {
+                Some(card) => add_registered(app, &call, card),
+                None => {
+                    let text = s(params, "text").to_string();
+                    crate::view::messages_with(app, |m| crate::view::upsert_tool(m, &format!("own:{call}"), &text, None));
+                    app.invoke_scroll_bottom();
+                }
+            }
+        }
         "gui/toolResult" => {
             let Some(result) = params.get("result").filter(|r| !r.is_null()) else { return };
             let Some(card) = find_card(result) else { return };
@@ -379,6 +399,29 @@ pub(crate) fn on_notify(app: &AppWindow, method: &str, params: &Value) {
         }
         _ => {}
     }
+}
+
+/// A record the model registered: a card. Evidence recorded one after another goes into the card
+/// just above it (one card "evidence N items" instead of one card per quote).
+fn add_registered(app: &AppWindow, call: &str, card: Value) {
+    let last = app.global::<AppState>().get_messages();
+    let last_id = last.row_data(last.row_count().saturating_sub(1)).map(|m| m.id.to_string()).unwrap_or_default();
+    let same_kind = |d: &Value| registered(d).first().map(|i| s(i, "kind") == s(&card, "kind")).unwrap_or(false);
+    if s(&card, "status") == "registered" && s(&card, "kind") == "evidence" {
+        if let Some(Info::Reg { data, state: RState::Result, reason }) = INFO.with(|i| i.borrow().get(&last_id).cloned()) {
+            if same_kind(&data) && registered(&data).len() == data.get("items").and_then(Value::as_array).map_or(1, Vec::len) {
+                let mut items: Vec<Value> = match data.get("items").and_then(Value::as_array) {
+                    Some(a) if !a.is_empty() => a.clone(),
+                    _ => vec![data.clone()],
+                };
+                items.push(card);
+                let merged = json!({ "count": items.len(), "items": items });
+                set_info(app, &last_id, Info::Reg { data: merged, state: RState::Result, reason });
+                return;
+            }
+        }
+    }
+    set_info(app, &format!("reg:{call}"), Info::Reg { data: card, state: RState::Result, reason: String::new() });
 }
 
 fn rpc(tag: String, method: &str, params: Value) {
