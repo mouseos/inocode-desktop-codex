@@ -242,7 +242,7 @@ fn page_rows(list: &[Value], sel_title: &Option<String>) -> Vec<KbRow> {
         .map(|p| {
             let confirmed = p.get("confirmed").and_then(Value::as_bool).unwrap_or(false);
             let selected = sel_title.as_deref() == Some(s(p, "title"));
-            row(s(p, "title"), s(p, "snippet"), if confirmed { "" } else { "未確認" }, if confirmed { 0 } else { 1 }, selected)
+            row(s(p, "title"), s(p, "snippet"), if confirmed { "" } else { "下書き" }, 0, selected)
         })
         .collect()
 }
@@ -351,7 +351,7 @@ fn render(app: &AppWindow) {
                     .enumerate()
                     .map(|(i, f)| {
                         let confirmed = matches!(s(f, "status"), "confirmed" | "verified" | "registered" | "");
-                        row(s(f, "title"), &cond_text(if s(f, "conditions").is_empty() { "unknown" } else { s(f, "conditions") }), if confirmed { "" } else { "未確認" }, if confirmed { 0 } else { 1 }, i as i32 == k.sel)
+                        row(s(f, "title"), &cond_text(if s(f, "conditions").is_empty() { "unknown" } else { s(f, "conditions") }), if confirmed { "" } else { "下書き" }, 0, i as i32 == k.sel)
                     })
                     .collect();
                 st.set_rows(model(rows));
@@ -365,8 +365,7 @@ fn render(app: &AppWindow) {
                     st.set_d_title(s(f, "title").into());
                     let confirmed = matches!(s(f, "status"), "confirmed" | "verified" | "registered" | "");
                     if !confirmed {
-                        st.set_d_badge("未確認".into());
-                        st.set_d_badge_tone(1);
+                        st.set_d_meta("下書き".into());
                     }
                     st.set_d_body(strs(if s(f, "body").is_empty() { vec![] } else { vec![s(f, "body").to_string()] }));
                     st.set_d_kv(model(failure_fields(f, None).into_iter().map(|(a, b)| KbKv { k: a.into(), v: b.into() }).collect()));
@@ -513,11 +512,12 @@ fn detail_page(st: &KbState<'_>, p: &Value) {
     st.set_d_tags(strs(p.get("tags").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()));
     let confirmed = p.get("confirmed").and_then(Value::as_bool).unwrap_or(false);
     let by = p.get("revs").and_then(Value::as_array).and_then(|a| a.first()).map(|r| s(r, "by")).unwrap_or("");
-    st.set_d_meta(if by == "model" { "AI" } else if by == "user" { "自分" } else { "" }.into());
-    if !confirmed {
-        st.set_d_badge("未確認".into());
-        st.set_d_badge_tone(1);
-    }
+    let who = if by == "model" { "AI" } else if by == "user" { "自分" } else { "" };
+    st.set_d_meta(match (who, confirmed) {
+        ("", false) => "下書き".to_string(),
+        (w, false) => format!("{w} · 下書き"),
+        (w, true) => w.to_string(),
+    }.into());
     st.set_d_body(strs(paragraphs(s(p, "body"))));
     let quotes: Vec<KbQuote> = p
         .get("quotes")
@@ -529,11 +529,7 @@ fn detail_page(st: &KbState<'_>, p: &Value) {
     st.set_d_links_heading("リンク".into());
     st.set_d_links(strs(links));
     st.set_d_backlinks(strs(p.get("backlinks").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()));
-    let mut acts = Vec::new();
-    if !confirmed {
-        acts.push(act("page-confirm", "確認済みにする", true));
-    }
-    acts.push(act("page-edit", "編集", confirmed));
+    let mut acts = vec![act("page-edit", "編集", true)];
     if last_change_by_model(p) {
         acts.push(act("reject", "却下", false));
     }
@@ -1406,8 +1402,8 @@ mod tests {
     fn page_rows_mark_unconfirmed_pages() {
         let pages = fixture("kb-page-list.json").get("pages").and_then(Value::as_array).cloned().unwrap();
         let rows = page_rows(&pages, &None);
-        assert_eq!(rows[0].end.as_str(), "未確認");
-        assert_eq!(rows[0].end_tone, 1);
+        assert_eq!(rows[0].end.as_str(), "下書き");
+        assert_eq!(rows[0].end_tone, 0);
         let q = all_quotes(&[("A".to_string(), fixture("kb-page-read.json"))]);
         assert_eq!(q.len(), 1);
         assert_eq!(s(&q[0].1, "sourceTitle"), "SQLite docs");

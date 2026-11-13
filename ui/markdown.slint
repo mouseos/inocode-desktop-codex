@@ -117,22 +117,35 @@ component Block inherits Rectangle {
             link-clicked(l) => { MdState.link(l); }
         }
         if root.item.kind == 3: CodeBlock { item: root.item; }
-        // A table row: the cells share the width, placed by hand; the height is a guess from the
-        // length of the text (a text in a horizontal layout does not know its width).
-        if root.item.kind == 4: Rectangle {
+        // A table row: the cells share the width. Each cell is given its width, so its text
+        // knows how many lines it needs, and the row is as high as its highest cell (a guess from
+        // the length of the text let a long cell run into the next row).
+        if root.item.kind == 4: trow := Rectangle {
             property <int> n: max(root.item.cells.length, 1);
             property <length> cell-w: (self.width - 12px * (self.n + 1)) / self.n;
             background: root.item.level == 1 ? Theme.hover : transparent;
-            height: 14px + root.item.est-lines * 21px;
-            for c[i] in root.item.cells: StyledText {
-                x: 12px + i * (parent.cell-w + 12px);
-                y: 7px;
-                width: parent.cell-w;
-                text: c;
-                default-color: Theme.fg;
-                default-font-size: Theme.body-font;
-                link-color: Theme.accent;
-                link-clicked(l) => { MdState.link(l); }
+            height: cells.preferred-height + 1px;
+            cells := HorizontalLayout {
+                y: 0px;
+                height: self.preferred-height;
+                padding-left: 12px;
+                padding-right: 12px;
+                padding-top: 7px;
+                padding-bottom: 7px;
+                spacing: 12px;
+                alignment: start;
+                for c in root.item.cells: VerticalLayout {
+                    width: trow.cell-w;
+                    alignment: start;
+                    StyledText {
+                        width: parent.width;
+                        text: c;
+                        default-color: Theme.fg;
+                        default-font-size: Theme.body-font;
+                        link-color: Theme.accent;
+                        link-clicked(l) => { MdState.link(l); }
+                    }
+                }
             }
             Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
         }

@@ -22,3 +22,9 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Slint's winit backend 1.18.1 with one change (vendor/i-slint-backend-winit/renderer/sw.rs): the
+# software renderer repaints the whole window every frame instead of only the dirty regions,
+# whose misses left old text drawn under new text.
+[patch.crates-io]
+i-slint-backend-winit = { path = "vendor/i-slint-backend-winit" }
