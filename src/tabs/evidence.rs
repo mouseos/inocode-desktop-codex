@@ -144,11 +144,8 @@ struct Placed {
 #[derive(Debug, Clone, PartialEq)]
 struct Layout {
     placed: Vec<Placed>,
-    /// (始点のノード番号, 終点のノード番号, SVG のパス(枠の左上が原点))
-    edges: Vec<(usize, usize, String)>,
-    /// 各辺の枠(x, y, 幅, 高さ): 辺ごとの Path はこの大きさだけ取る(キャンバス全体の大きさで 100 本以上を
-    /// 描くと、描画側が大きさを扱えず panic する)
-    boxes: Vec<[f32; 4]>,
+    /// (始点のノード番号, 終点のノード番号, 形 [始点 x, 始点 y, 制御点 1 の x, 制御点 2 の x, 終点 x, 終点 y])
+    edges: Vec<(usize, usize, [f32; 6])>,
     width: f32,
     height: f32,
 }
@@ -203,45 +200,64 @@ fn layout(nodes: &[NodeData], edges: &[EdgeData]) -> Layout {
             };
         }
     }
-    let path = |a: usize, b: usize| -> (String, [f32; 4]) {
+    let geom = |a: usize, b: usize| -> [f32; 6] {
         let (x1, y1) = (placed[a].x + NODE_W, placed[a].y + NODE_H / 2.0);
         let (x2, y2) = (placed[b].x, placed[b].y + NODE_H / 2.0);
         let dx = ((x2 - x1).abs() / 2.0).max(24.0);
-        // the box of every point of the line (the curve stays inside its control points)
-        let xs = [x1, x1 + dx, x2 - dx, x2, x2 - 7.0];
-        let ys = [y1, y2, y2 - 4.0, y2 + 4.0];
-        let (x0, xe) = (xs.iter().cloned().fold(f32::MAX, f32::min) - 2.0, xs.iter().cloned().fold(f32::MIN, f32::max) + 2.0);
-        let (y0, ye) = (ys.iter().cloned().fold(f32::MAX, f32::min) - 2.0, ys.iter().cloned().fold(f32::MIN, f32::max) + 2.0);
-        // 曲線 + 終点の矢じり(枠の左上が原点)
-        let p = format!(
-            "M {} {} C {} {} {} {} {} {} M {} {} L {} {} M {} {} L {} {}",
-            x1 - x0,
-            y1 - y0,
-            x1 + dx - x0,
-            y1 - y0,
-            x2 - dx - x0,
-            y2 - y0,
-            x2 - x0,
-            y2 - y0,
-            x2 - x0,
-            y2 - y0,
-            x2 - 7.0 - x0,
-            y2 - 4.0 - y0,
-            x2 - x0,
-            y2 - y0,
-            x2 - 7.0 - x0,
-            y2 + 4.0 - y0
-        );
-        (p, [x0, y0, xe - x0, ye - y0])
+        [x1, y1, x1 + dx, x2 - dx, x2, y2]
     };
-    let drawn: Vec<(usize, usize, String, [f32; 4])> = links.iter().map(|&(a, b)| { let (p, bx) = path(a, b); (a, b, p, bx) }).collect();
     Layout {
-        boxes: drawn.iter().map(|d| d.3).collect(),
-        edges: drawn.into_iter().map(|d| (d.0, d.1, d.2)).collect(),
+        edges: links.iter().map(|&(a, b)| (a, b, geom(a, b))).collect(),
         width: MARGIN * 2.0 + depth as f32 * NODE_W + depth.saturating_sub(1) as f32 * H_GAP,
         height: MARGIN * 2.0 + rows as f32 * NODE_H + rows.saturating_sub(1) as f32 * V_GAP,
         placed,
     }
+}
+
+/// One edge as path commands, with (ox, oy) as the origin: the curve and the head of its arrow.
+fn edge_commands(g: &[f32; 6], ox: f32, oy: f32) -> String {
+    let [x1, y1, c1, c2, x2, y2] = *g;
+    format!(
+        "M {} {} C {} {} {} {} {} {} M {} {} L {} {} M {} {} L {} {} ",
+        x1 - ox,
+        y1 - oy,
+        c1 - ox,
+        y1 - oy,
+        c2 - ox,
+        y2 - oy,
+        x2 - ox,
+        y2 - oy,
+        x2 - ox,
+        y2 - oy,
+        x2 - 7.0 - ox,
+        y2 - 4.0 - oy,
+        x2 - ox,
+        y2 - oy,
+        x2 - 7.0 - ox,
+        y2 + 4.0 - oy
+    )
+}
+
+/// The lines are drawn in cells of this size, one path per colour and cell: a screen only draws the cells it shows.
+const CELL: f32 = 1600.0;
+
+/// The lines grouped by colour and cell: (tone, cell x, cell y) -> commands, in the coordinates of the cell.
+fn edge_cells(layout: &Layout, tones: &[i32]) -> Vec<((i32, i32, i32), String)> {
+    let mut cells: HashMap<(i32, i32, i32), String> = HashMap::new();
+    for ((_, _, g), tone) in layout.edges.iter().zip(tones) {
+        let (x0, x1) = (g[0].min(g[3]).min(g[2]).min(g[4] - 7.0), g[0].max(g[2]).max(g[3]).max(g[4]));
+        let (y0, y1) = (g[1].min(g[5]) - 4.0, g[1].max(g[5]) + 4.0);
+        let (cx0, cx1) = ((x0 / CELL).floor() as i32, (x1 / CELL).floor() as i32);
+        let (cy0, cy1) = ((y0 / CELL).floor() as i32, (y1 / CELL).floor() as i32);
+        for cx in cx0..=cx1 {
+            for cy in cy0..=cy1 {
+                cells.entry((*tone, cx, cy)).or_default().push_str(&edge_commands(g, cx as f32 * CELL, cy as f32 * CELL));
+            }
+        }
+    }
+    let mut v: Vec<_> = cells.into_iter().collect();
+    v.sort_by_key(|(k, _)| *k);
+    v
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -286,12 +302,20 @@ struct E {
     nodes: Vec<NodeData>,
     edges: Vec<EdgeData>,
     layout: Option<Layout>,
+    /// 線を色とセルでまとめたもの
+    cells: Vec<((i32, i32, i32), String)>,
     selected_node: Option<String>,
     verify_checked: Vec<bool>,
+    /// いま画面にある地図の元(題と版)。同じなら作り直さない
+    key: Option<String>,
+    /// 作り直しの世代: 古い結果は捨てる
+    generation: u64,
 }
 
 thread_local! {
     static E: RefCell<E> = RefCell::new(E::default());
+    static REBUILD: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
+    static BENCH: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
 }
 
 /// いま開いているスレッドの作業フォルダ(プロジェクトはここから決まる)。無ければ、何も頼まない。
@@ -316,16 +340,91 @@ fn push_verify_sources(app: &AppWindow) {
     });
 }
 
+/// The map, built from the pages: nodes, edges, the places, the colour of every edge.
+struct Built {
+    nodes: Vec<NodeData>,
+    edges: Vec<EdgeData>,
+    layout: Layout,
+    tones: Vec<i32>,
+    /// 線を色とセルでまとめたもの(画面は、見えるセルだけ作る)
+    cells: Vec<((i32, i32, i32), String)>,
+}
+
+fn build_all(pages: &[Value]) -> Built {
+    let (nodes, edges) = build_graph(pages);
+    let layout = layout(&nodes, &edges);
+    let kind_of: HashMap<(&str, &str), &str> = edges.iter().map(|e| ((e.from.as_str(), e.to.as_str()), e.kind.as_str())).collect();
+    let tones = layout
+        .edges
+        .iter()
+        .map(|(a, b, _)| {
+            if !nodes[*b].supported {
+                3
+            } else {
+                match kind_of.get(&(nodes[*a].id.as_str(), nodes[*b].id.as_str())).copied().unwrap_or("") {
+                    "premise" => 1,
+                    "cites" => 2,
+                    _ => 0,
+                }
+            }
+        })
+        .collect();
+    let cells = edge_cells(&layout, &tones);
+    Built { nodes, edges, layout, tones, cells }
+}
+
+fn pages_key(pages: &[Value]) -> String {
+    pages.iter().map(|p| format!("{}\u{1}{}", s(p, "title"), s(p, "rev"))).collect::<Vec<_>>().join("\u{2}")
+}
+
+/// Pages come one by one: the map is made once they stop (a short wait), in the background, and only when the
+/// pages are not the same as the ones the map on the screen was made from.
 fn rebuild(app: &AppWindow) {
-    E.with(|e| {
-        let mut e = e.borrow_mut();
-        let (nodes, edges) = build_graph(&e.pages);
-        e.layout = Some(layout(&nodes, &edges));
-        e.nodes = nodes;
-        e.edges = edges;
+    let weak = app.as_weak();
+    REBUILD.with(|t| {
+        let mut t = t.borrow_mut();
+        let timer = t.get_or_insert_with(slint::Timer::default);
+        timer.start(slint::TimerMode::SingleShot, std::time::Duration::from_millis(120), move || {
+            if let Some(app) = weak.upgrade() {
+                rebuild_now(&app);
+            }
+        });
     });
-    push_graph(app);
+}
+
+fn rebuild_now(app: &AppWindow) {
+    let (pages, key, generation) = E.with(|e| {
+        let mut e = e.borrow_mut();
+        e.generation += 1;
+        (e.pages.clone(), pages_key(&e.pages), e.generation)
+    });
+    if E.with(|e| e.borrow().key.as_deref() == Some(key.as_str())) {
+        return;
+    }
+    // the list of sources for the verification does not wait for the layout
     push_verify_sources(app);
+    let weak = app.as_weak();
+    std::thread::spawn(move || {
+        let built = build_all(&pages);
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(app) = weak.upgrade() else { return };
+            let fresh = E.with(|e| {
+                let mut e = e.borrow_mut();
+                if e.generation != generation {
+                    return false;
+                }
+                e.nodes = built.nodes;
+                e.edges = built.edges;
+                e.layout = Some(built.layout);
+                e.cells = built.cells;
+                e.key = Some(key);
+                true
+            });
+            if fresh {
+                push_graph(&app);
+            }
+        });
+    });
 }
 
 fn push_graph(app: &AppWindow) {
@@ -355,22 +454,9 @@ fn push_graph(app: &AppWindow) {
                 .collect(),
         ));
         st.set_edges(model(
-            lay.edges
+            e.cells
                 .iter()
-                .zip(lay.boxes.iter())
-                .map(|((a, b, path), bx)| {
-                    let kind = e.edges.iter().find(|x| x.from == e.nodes[*a].id && x.to == e.nodes[*b].id).map(|x| x.kind.as_str()).unwrap_or("");
-                    let tone = if !e.nodes[*b].supported {
-                        3
-                    } else {
-                        match kind {
-                            "premise" => 1,
-                            "cites" => 2,
-                            _ => 0,
-                        }
-                    };
-                    GEdge { commands: path.as_str().into(), tone, x: bx[0], y: bx[1], w: bx[2], h: bx[3] }
-                })
+                .map(|((tone, cx, cy), commands)| GEdge { commands: commands.as_str().into(), tone: *tone, x: *cx as f32 * CELL, y: *cy as f32 * CELL, w: CELL, h: CELL })
                 .collect(),
         ));
         st.set_canvas_w(lay.width);
@@ -413,8 +499,89 @@ fn request(app: &AppWindow, host: &Host) {
 
 // ------------------------------------------------------------------ tab entry points
 
+/// INOCODE_GUI_KB_BENCH=<pages>: 資料ページを作り(各ページ: リンク 8 本、引用 4 件)、マップを作る様子を測る
+/// (読むたびに作り直す今のやり方で、ページの数だけ)。結果は標準エラーへ。
+fn bench(app: &AppWindow, pages: usize) {
+    use std::time::Instant;
+    let mut seed: u64 = 12345;
+    let mut next = |m: usize| {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        ((seed >> 33) as usize) % m
+    };
+    let titles = (pages * 5 / 2).max(10);
+    let list: Vec<Value> = (0..pages)
+        .map(|i| {
+            let links: Vec<Value> = (0..8).map(|_| json!({ "title": format!("ページ {}", next(titles)), "exists": true })).collect();
+            let quotes: Vec<Value> = (0..4).map(|_| { let k = next(40); json!({ "sourceRef": format!("src_{k}"), "sourceTitle": format!("出典 {k}"), "text": "x", "matches": true }) }).collect();
+            json!({ "title": format!("ページ {i}"), "confirmed": true, "links": links, "quotes": quotes })
+        })
+        .collect();
+    E.with(|e| *e.borrow_mut() = E::default());
+    // the pages arrive one by one: what the screen thread spends on each arrival
+    let (mut total, mut worst) = (0u128, 0u128);
+    for p in &list {
+        E.with(|e| e.borrow_mut().pages.push(p.clone()));
+        let t = Instant::now();
+        rebuild(app);
+        let us = t.elapsed().as_micros();
+        total += us;
+        worst = worst.max(us);
+    }
+    // the one build, as the background thread does it
+    let pages_now = E.with(|e| e.borrow().pages.clone());
+    let t = Instant::now();
+    let built = build_all(&pages_now);
+    let lay_us = t.elapsed().as_micros();
+    let (nodes, edges, w, h) = (built.nodes.len(), built.edges.len(), built.layout.width, built.layout.height);
+    let cells = built.cells.len();
+    E.with(|e| {
+        let mut e = e.borrow_mut();
+        e.nodes = built.nodes;
+        e.edges = built.edges;
+        e.layout = Some(built.layout);
+        e.cells = built.cells;
+    });
+    let build_us = 0u128;
+    let t = Instant::now();
+    push_graph(app);
+    let push_us = t.elapsed().as_micros();
+    let nodes_on_screen = nodes;
+    let _ = nodes_on_screen;
+    // the first picture also lays the whole window out: the 2nd and 3rd are the cost of drawing again
+    let mut frames = Vec::new();
+    let mut shot = true;
+    for _ in 0..3 {
+        let t = Instant::now();
+        shot &= slint::ComponentHandle::window(app).take_snapshot().is_ok();
+        frames.push(t.elapsed().as_micros());
+    }
+    let frame_us = frames[2];
+    eprintln!(
+        "bench pages={pages} rebuilds={pages} total_ms={:.1} worst_ms={:.1} | nodes={nodes} edges={edges} elements_made={} (nodes {nodes}, lines {edges} in {cells} cells) canvas={w:.0}x{h:.0} | build_ms={:.2} layout_ms={:.2} push_ms={:.2} frame_ms={:.1} (1st {:.1}) shot={shot}",
+        total as f64 / 1000.0,
+        worst as f64 / 1000.0,
+        nodes + cells,
+        build_us as f64 / 1000.0,
+        lay_us as f64 / 1000.0,
+        push_us as f64 / 1000.0,
+        frame_us as f64 / 1000.0,
+        frames[0] as f64 / 1000.0
+    );
+}
+
 /// 起動時に 1 回。コールバックの登録をここで行う。
 pub fn install(app: &AppWindow, host: &Host) {
+    if let Some(n) = std::env::var("INOCODE_GUI_KB_BENCH").ok().and_then(|v| v.parse::<usize>().ok()) {
+        let weak = app.as_weak();
+        let t = slint::Timer::default();
+        t.start(slint::TimerMode::SingleShot, std::time::Duration::from_secs(5), move || {
+            if let Some(app) = weak.upgrade() {
+                app.global::<crate::KbState>().set_evid_sub(12);
+                bench(&app, n);
+            }
+        });
+        BENCH.with(|b| *b.borrow_mut() = Some(t));
+    }
     let st = app.global::<EvidenceState>();
     let (weak, h) = (app.as_weak(), host.clone());
     st.on_refresh(move || {

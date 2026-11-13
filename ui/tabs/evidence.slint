@@ -109,25 +109,37 @@ component NodeBox inherits Rectangle {
 
 component MapView inherits Rectangle {
     VerticalLayout {
-        Flickable {
+        mf := Flickable {
             content-width: max(EvidenceState.canvas-w, self.width);
             content-height: max(EvidenceState.canvas-h, self.height);
-            // 先にエッジ、後にノード(ノードが線の上に出る)
-            for e in EvidenceState.edges: Path {
-                x: e.x;
-                y: e.y;
-                width: e.w;
-                height: e.h;
-                viewbox-width: e.w / 1px;
-                viewbox-height: e.h / 1px;
-                commands: e.commands;
-                fill: transparent;
-                stroke-width: 1.5px;
-                stroke: e.tone == 3 ? Theme.danger : e.tone == 1 ? Theme.accent : e.tone == 2 ? Theme.border : Theme.fg-tertiary;
+            // 先にエッジ、後にノード(ノードが線の上に出る)。画面の近くのものだけ作る
+            for e in EvidenceState.edges: Rectangle {
+                x: 0px;
+                y: 0px;
+                width: 0px;
+                height: 0px;
+                if e.x + e.w > -mf.content-x - 200px && e.x < -mf.content-x + mf.width + 200px && e.y + e.h > -mf.content-y - 200px && e.y < -mf.content-y + mf.height + 200px: Path {
+                    x: e.x;
+                    y: e.y;
+                    width: e.w;
+                    height: e.h;
+                    viewbox-width: e.w / 1px;
+                    viewbox-height: e.h / 1px;
+                    commands: e.commands;
+                    fill: transparent;
+                    stroke-width: 1.5px;
+                    stroke: e.tone == 3 ? Theme.danger : e.tone == 1 ? Theme.accent : e.tone == 2 ? Theme.border : Theme.fg-tertiary;
+                }
             }
-            for n in EvidenceState.nodes: NodeBox {
-                item: n;
-                clicked => { EvidenceState.select-node(n.id); }
+            for n in EvidenceState.nodes: Rectangle {
+                x: 0px;
+                y: 0px;
+                width: 0px;
+                height: 0px;
+                if n.x + n.w > -mf.content-x - 200px && n.x < -mf.content-x + mf.width + 200px && n.y + n.h > -mf.content-y - 200px && n.y < -mf.content-y + mf.height + 200px: NodeBox {
+                    item: n;
+                    clicked => { EvidenceState.select-node(n.id); }
+                }
             }
         }
         if EvidenceState.has-node: Rectangle {
