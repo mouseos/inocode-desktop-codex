@@ -13,6 +13,9 @@ arboard = { version = "3", default-features = false, features = ["image-data"] }
 png = "0.18"
 pulldown-cmark = { version = "0.13", default-features = false }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
 [build-dependencies]
 slint-build = "1"
 

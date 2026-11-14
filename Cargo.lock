@@ -2109,6 +2109,7 @@ dependencies = [
  "slint",
  "slint-build",
  "tungstenite",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -1,8 +1,13 @@
 import { Theme } from "../theme.slint";
 import { Spinner } from "std-widgets.slint";
 import { Button } from "g_widgets.slint";
+import { SidebarState } from "../menus.slint";
+import { PaletteState } from "../palette.slint";
+import { PickerDemo } from "../pickers.slint";
+import { CompareState } from "../compare.slint";
+import { SettingsPageState } from "../settings_page.slint";
 
-// ブラウザタブ(65 第 1 段)。中身は別窓の inocode-browser(CEF)。タブには URL 欄と、起動中のスピナーだけ。
+// ブラウザタブ(65 第 2 段)。URL 欄の下の領域に、inocode-browser(CEF)の子ウィンドウを Rust が重ねる。
 // このファイルと src/tabs/browser.rs。
 
 export global BrowserState {
@@ -10,6 +15,14 @@ export global BrowserState {
     // 0 起動していない、1 起動中、2 表示中、3 失敗
     in property <int> phase: 0;
     in property <string> error;
+    // 子ウィンドウを置く領域(窓の中の論理座標)。BrowserTab が書く。
+    in-out property <length> view-x;
+    in-out property <length> view-y;
+    in-out property <length> view-w;
+    in-out property <length> view-h;
+    // メニューや画面が上に開いている間は、子ウィンドウを隠す(子ウィンドウは Slint の描画より上に出るため)。
+    out property <bool> covered: SidebarState.menu-open || PaletteState.open || PickerDemo.open
+        || CompareState.open || SettingsPageState.open;
     callback open();
     callback close();
 }
@@ -18,7 +31,6 @@ export component BrowserTab inherits Rectangle {
     VerticalLayout {
         padding: 16px;
         spacing: 12px;
-        alignment: start;
         HorizontalLayout {
             spacing: 8px;
             Rectangle {
@@ -43,15 +55,28 @@ export component BrowserTab inherits Rectangle {
             Button { label: "開く"; primary: true; clicked => { BrowserState.open(); } }
             if BrowserState.phase == 2: Button { label: "閉じる"; clicked => { BrowserState.close(); } }
         }
-        if BrowserState.phase == 1: HorizontalLayout {
-            alignment: start;
-            Spinner { indeterminate: true; width: 24px; height: 24px; }
+        view := Rectangle {
+            vertical-stretch: 1;
+            if BrowserState.phase == 1: Spinner { indeterminate: true; width: 24px; height: 24px; }
+            if BrowserState.phase == 3: Text {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                text: BrowserState.error;
+                color: Theme.danger;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
         }
-        if BrowserState.phase == 3: Text {
-            text: BrowserState.error;
-            color: Theme.danger;
-            font-size: 12px;
-            wrap: word-wrap;
+    }
+    Timer {
+        interval: 33ms;
+        running: true;
+        triggered => {
+            BrowserState.view-x = view.absolute-position.x;
+            BrowserState.view-y = view.absolute-position.y;
+            BrowserState.view-w = view.width;
+            BrowserState.view-h = view.height;
         }
     }
 }
