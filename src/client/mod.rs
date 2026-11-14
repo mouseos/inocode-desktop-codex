@@ -50,6 +50,24 @@ mod tests {
     fn command_item_text() {
         let item = json!({"type":"commandExecution","id":"a","command":"dir","status":"completed","exitCode":2});
         assert_eq!(tool_text(&item).unwrap(), "実行: dir — 完了 (終了コード 2)");
+        // InoCode's own tools in the history read as they did live
+        let own = |tool: &str, args: Value, out: &str| json!({"type":"dynamicToolCall","tool":tool,"arguments":args,"status":"completed","contentItems":[{"type":"inputText","text":out}]});
+        assert_eq!(tool_text(&own("search_knowledge", json!({"query":"WAL"}), "{\"count\":2}")).unwrap(), "知識を検索しました: WAL — 2 件");
+        assert_eq!(tool_text(&own("search_evidence", json!({}), "{\"count\":0}")).unwrap(), "根拠を検索しました — 0 件");
+        assert_eq!(tool_text(&own("kb_propose", json!({"kind":"failure","title":"copy が失敗"}), "{}")).unwrap(), "失敗を記録しました: copy が失敗");
+        assert_eq!(tool_text(&own("kb_prohibit", json!({"title":"out を消さない"}), "{}")).unwrap(), "禁止事項を登録しました: out を消さない");
+        let thread = json!({"turns":[{"id":"t1","items":[
+            own("record_evidence", json!({"claim":"A"}), "{}"),
+            {"type":"reasoning","status":"completed"},
+            own("record_evidence", json!({"claim":"B"}), "{}"),
+            own("record_evidence", json!({"claim":"C"}), "{}"),
+            {"type":"agentMessage","text":"done"}]}]});
+        let h = history_from_thread(&thread);
+        assert_eq!(h.len(), 2, "{h:?}");
+        assert_eq!(h[0].text, "根拠を 3 件記録しました");
+        assert_eq!(h[0].detail, "- A
+- B
+- C");
         // a command of several lines is one line in the row
         let many = json!({"type":"commandExecution","command":"$urls = @{
   'a' = 'x';

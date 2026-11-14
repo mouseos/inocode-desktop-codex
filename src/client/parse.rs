@@ -62,6 +62,9 @@ fn tool_text_lines(item: &Value) -> Option<String> {
         }
         "dynamicToolCall" => {
             let tool = item.get("tool").and_then(Value::as_str).unwrap_or("");
+            if let Some(text) = own_tool_text(item) {
+                return Some(text);
+            }
             Some(if tool == "exec" { exec_text(item) } else { format!("ツール {tool}{suffix}") })
         }
         // Claude: "Thinking…" while it runs, "Thought for {s}s" afterwards; no seconds when they
@@ -499,6 +502,79 @@ pub fn history_from_thread(thread: &Value) -> Vec<Msg> {
             }
         }
     }
+    group_evidence(out)
+}
+
+/// InoCode's own tools in the history (the server makes their calls into dynamic tool calls):
+/// the same line the chat showed live (inocode/tool/used).
+pub fn own_tool_text(item: &Value) -> Option<String> {
+    let tool = item.get("tool").and_then(Value::as_str)?;
+    let args = item.get("arguments").cloned().unwrap_or(Value::Null);
+    let arg = |k: &str| args.get(k).and_then(Value::as_str).map(str::trim).unwrap_or("").to_string();
+    let output: Value = item
+        .get("contentItems")
+        .and_then(Value::as_array)
+        .and_then(|a| a.iter().find_map(|c| c.get("text").and_then(Value::as_str)))
+        .and_then(|t| serde_json::from_str(t).ok())
+        .unwrap_or(Value::Null);
+    let count = output.get("count").and_then(Value::as_u64);
+    let with = |what: &str, q: String| {
+        let n = count.map(|n| format!(" — {n} 件")).unwrap_or_default();
+        if q.is_empty() { format!("{what}{n}") } else { format!("{what}: {q}{n}") }
+    };
+    Some(match tool {
+        "search_knowledge" => with("知識を検索しました", arg("query")),
+        "search_evidence" => with("根拠を検索しました", arg("query")),
+        "read_knowledge" => format!("知識を読みました: {}", arg("id")),
+        "record_evidence" => format!("根拠を記録しました: {}", arg("claim")),
+        "verify_evidence_document" => "文書を根拠と照合しました".to_string(),
+        "kb_propose" => {
+            let what = match arg("kind").as_str() {
+                "failure" => "失敗を記録しました",
+                "fact" => "事実を記録しました",
+                _ => "ページを登録しました",
+            };
+            format!("{what}: {}", arg("title"))
+        }
+        "kb_prohibit" => format!("禁止事項を登録しました: {}", arg("title")),
+        "kb_reject" => format!("記録を却下しました: {}", arg("id")),
+        _ => return None,
+    })
+}
+
+/// Evidence recorded one after another is one row: "recorded n pieces of evidence", the claims
+/// in its body.
+fn group_evidence(rows: Vec<Msg>) -> Vec<Msg> {
+    const ONE: &str = "根拠を記録しました: ";
+    let mut out: Vec<Msg> = Vec::new();
+    let mut run: Vec<Msg> = Vec::new();
+    let flush = |run: &mut Vec<Msg>, out: &mut Vec<Msg>| {
+        if run.len() > 1 {
+            let mut first = run[0].clone();
+            first.detail = run.iter().map(|m| format!("- {}", m.text.trim_start_matches(ONE))).collect::<Vec<_>>().join("
+");
+            first.text = format!("根拠を {} 件記録しました", run.len());
+            out.push(first);
+        } else {
+            out.extend(run.drain(..));
+        }
+        run.clear();
+    };
+    for m in rows {
+        if m.role == "tool" && m.text.starts_with(ONE) {
+            run.push(m);
+        } else if m.role == "tool" && !run.is_empty() && !m.text.contains("思考") {
+            // a thinking row between two records does not split them; anything else does
+            flush(&mut run, &mut out);
+            out.push(m);
+        } else if m.role == "tool" && !run.is_empty() {
+            continue;
+        } else {
+            flush(&mut run, &mut out);
+            out.push(m);
+        }
+    }
+    flush(&mut run, &mut out);
     out
 }
 

@@ -20,6 +20,8 @@ thread_local! {
     static DEMO_TIMER: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
     /// The rejections still to send for a card (one at a time: two of them can touch one page).
     static QUEUE: RefCell<HashMap<String, Vec<Value>>> = RefCell::new(HashMap::new());
+    /// Tool calls shown as a card: their row is not shown again.
+    static ABSORBED: RefCell<std::collections::HashSet<String>> = RefCell::new(std::collections::HashSet::new());
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -373,32 +375,27 @@ pub(crate) fn on_notify(app: &AppWindow, method: &str, params: &Value) {
             let relaxation = params.get("relaxationId").and_then(Value::as_str).unwrap_or("").to_string();
             set_info(app, &id, Info::Guard { data: params.clone(), state, expanded: false, relaxation, scope: if state == GState::Relaxed { scope } else { String::new() } });
         }
-        "inocode/tool/used" => {
-            // One of InoCode's own tools (knowledge, evidence, prohibitions): these calls are not
-            // items of the thread, so this is all the chat sees of them.
-            let active = STATE.with(|st| st.borrow().active.clone());
-            if s(params, "threadId") != active {
-                return;
-            }
-            let call = s(params, "callId").to_string();
-            let result = params.get("result").cloned().unwrap_or(Value::Null);
-            match find_card(&result) {
-                Some(card) => add_registered(app, &call, card),
-                None => {
-                    let text = s(params, "text").to_string();
-                    crate::view::messages_with(app, |m| crate::view::upsert_tool(m, &format!("own:{call}"), &text, None));
-                    app.invoke_scroll_bottom();
-                }
-            }
-        }
         "gui/toolResult" => {
-            let Some(result) = params.get("result").filter(|r| !r.is_null()) else { return };
-            let Some(card) = find_card(result) else { return };
-            let id = format!("reg:{}", s(params, "id"));
-            set_info(app, &id, Info::Reg { data: card, state: RState::Result, reason: String::new() });
+            // A tool result that is a record (InoCode's own tools give theirs as the text of the
+            // dynamic tool call): the card stands for the call, in place of its row.
+            let result = params.get("result").filter(|r| !r.is_null()).or_else(|| params.get("contentItems"));
+            let Some(card) = result.and_then(find_card) else { return };
+            let call = s(params, "id").to_string();
+            ABSORBED.with(|a| a.borrow_mut().insert(call.clone()));
+            crate::view::messages_with(app, |m| {
+                if let Some(i) = (0..m.row_count()).find(|i| m.row_data(*i).is_some_and(|r| r.role == "tool" && r.id.as_str() == call)) {
+                    m.remove(i);
+                }
+            });
+            add_registered(app, &call, card);
         }
         _ => {}
     }
+}
+
+/// The call is shown as a card (so its row is not shown).
+pub(crate) fn absorbed(id: &str) -> bool {
+    ABSORBED.with(|a| a.borrow().contains(id))
 }
 
 /// A record the model registered: a card. Evidence recorded one after another goes into the card

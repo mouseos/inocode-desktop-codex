@@ -358,6 +358,9 @@ pub(crate) fn clip_detail(text: &str) -> String {
 
 /// Insert or update a tool row by id (keeps its place when it already exists).
 pub(crate) fn upsert_tool(model: &VecModel<Message>, id: &str, text: &str, detail: Option<&str>) {
+    if crate::cards::absorbed(id) {
+        return;
+    }
     // The row is one line high: a text of several lines is put on one.
     let one = client::one_line(text);
     let text = one.as_str();
