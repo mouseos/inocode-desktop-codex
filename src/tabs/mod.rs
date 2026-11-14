@@ -1,4 +1,4 @@
-//! 画面タブ (知識 / 根拠 / チーム / 設定) の登録。
+//! 画面タブ (知識 / 根拠 / チーム / ブラウザ / 設定) の登録。
 //!
 //! 各タブは自分のファイル (src/tabs/<name>.rs と ui/tabs/<name>.slint) だけを編集して実装する。
 //! 新しいタブを足すときは、ここ (mod 宣言と TABS) と ui/tabs.slint の 2 か所を直す。
@@ -10,6 +10,7 @@ use slint::ComponentHandle;
 use std::rc::Rc;
 
 mod accounts;
+mod browser;
 mod evidence;
 mod knowledge;
 pub(crate) mod kb;
@@ -48,10 +49,11 @@ struct Tab {
 }
 
 /// ui/tabs.slint の Tabs.titles と同じ順 (チャットを除く: 添字 i が Tabs.current == i + 1)。
-const TABS: [Tab; 4] = [
+const TABS: [Tab; 5] = [
     Tab { install: knowledge::install, opened: knowledge::opened, event: knowledge::event },
     Tab { install: evidence::install, opened: evidence::opened, event: evidence::event },
     Tab { install: team::install, opened: team::opened, event: team::event },
+    Tab { install: browser::install, opened: browser::opened, event: browser::event },
     Tab { install: settings::install, opened: settings::opened, event: settings::event },
 ];
 

@@ -439,7 +439,7 @@ fn load(app: &AppWindow, section: i32) {
         S::Inocode => {
             s.set_layout(1);
             s.set_loading(false);
-            app.global::<Tabs>().invoke_opened(4);
+            app.global::<Tabs>().invoke_opened(5);
         }
         S::Stats => {
             s.set_layout(7);
