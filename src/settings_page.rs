@@ -30,6 +30,7 @@ enum S {
     Mcp,
     Inocode,
     Stats,
+    Import,
 }
 
 fn nav() -> Vec<(S, &'static str)> {
@@ -50,6 +51,7 @@ fn nav() -> Vec<(S, &'static str)> {
         (S::Head, "InoCode"),
         (S::Inocode, "InoCode"),
         (S::Stats, "統計"),
+        (S::Import, "履歴の取り込み"),
     ]
 }
 
@@ -67,6 +69,7 @@ fn glyph_of(s: S) -> &'static str {
         S::Mcp => "\u{e9f4}",
         S::Inocode => "\u{e1b1}",
         S::Stats => "\u{e4fc}",
+        S::Import => "\u{e2c4}",
         _ => "",
     }
 }
@@ -133,6 +136,13 @@ thread_local! {
     static HANDLE: RefCell<Option<Rc<client::Handle>>> = const { RefCell::new(None) };
     static PREFS: RefCell<Prefs> = RefCell::new(Prefs::default());
     static DATA: RefCell<Data> = RefCell::new(Data::default());
+}
+
+/// A command to the client (a new session, a message), for the screens of this page.
+pub(crate) fn send(cmd: Command) {
+    if let Some(h) = HANDLE.with(|c| c.borrow().clone()) {
+        h.send(cmd);
+    }
 }
 
 pub(crate) fn rpc(tag: &str, method: &str, params: Value) {
@@ -445,6 +455,11 @@ fn load(app: &AppWindow, section: i32) {
             s.set_layout(7);
             s.set_loading(false);
         }
+        S::Import => {
+            s.set_layout(8);
+            s.set_loading(false);
+            crate::import_page::open(app);
+        }
     }
 }
 
@@ -637,7 +652,10 @@ pub(crate) fn on_rpc(app: &AppWindow, tag: &str, result: &Result<Value, String>)
     if !tag.starts_with("spage.") {
         return;
     }
-    if crate::settings_mcp::on_rpc(app, tag, result) || crate::settings_plugins::on_rpc(app, tag, result) {
+    if crate::import_page::on_rpc(app, tag, result)
+        || crate::settings_mcp::on_rpc(app, tag, result)
+        || crate::settings_plugins::on_rpc(app, tag, result)
+    {
         return;
     }
     let v = match result {

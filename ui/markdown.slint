@@ -25,6 +25,8 @@ export struct MdRow {
     cells: [styled-text],
     // table row: the number of lines the longest cell needs (a guess)
     est-lines: int,
+    // the markdown of the block as it was made: a block that did not change is not made again
+    src: string,
 }
 
 export global MdState {

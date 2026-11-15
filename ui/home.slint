@@ -16,6 +16,7 @@ import { ReplyState, ReplyChips, RefChip } from "reply.slint";
 import { CardView } from "cards.slint";
 import { GitState, GitChip, GitPanel } from "git_panel.slint";
 import { GoalState, GoalCards } from "goal.slint";
+import { ImportState, ImportBar } from "import_page.slint";
 
 component ApprovalButton inherits Rectangle {
     in property <string> label;
@@ -405,13 +406,19 @@ component ChatView inherits Rectangle {
     property <bool> at-bottom: true;
     // A question or an approval came or went: its end is to be in sight, wherever the reader was.
     property <bool> cards: PromptState.question-open || AppState.approvals.length > 0;
-    changed cards => { root.scroll-bottom(); }
+    changed cards => { root.scroll-bottom(true); }
     public function scroll-to(index: int) {
         root.goto = -1;
         root.goto = index;
     }
-    public function scroll-bottom() {
-        flick.content-y = min(0px, flick.height - content.preferred-height);
+    // `force`: the reader asked for the end (a message was sent, a session was opened).
+    // Without it only a reader who is already at the end follows the answer as it is written;
+    // reading the height of the content lays out the whole chat, so it is not done for a reader
+    // who scrolled up.
+    public function scroll-bottom(force: bool) {
+        if (force || root.at-bottom) {
+            flick.content-y = min(0px, flick.height - content.preferred-height);
+        }
     }
 
     flick := Flickable {
@@ -419,7 +426,7 @@ component ChatView inherits Rectangle {
         // Follow the end only when the reader was at the end: the position is kept as the reader
         // scrolls (not when the height changes), and the height change reads what it was before.
         changed viewport-y => { root.at-bottom = flick.viewport-y <= min(0px, flick.height - content.preferred-height) + 12px; }
-        changed height => { if (root.at-bottom) { root.scroll-bottom(); } }
+        changed height => { if (root.at-bottom) { root.scroll-bottom(true); } }
         content := VerticalLayout {
             width: parent.width;
             padding: 16px;
@@ -601,7 +608,7 @@ export component Home inherits Rectangle {
     in-out property <string> prompt;
     callback submit(string);
     property <bool> chat-active: AppState.messages.length > 0;
-    public function scroll-bottom() { chat.scroll-bottom(); }
+    public function scroll-bottom(force: bool) { chat.scroll-bottom(force); }
     public function scroll-to(index: int) { chat.scroll-to(index); }
 
     background: Theme.surface;
@@ -638,6 +645,7 @@ export component Home inherits Rectangle {
                     decide(k, d) => { AppState.decide(k, d); }
                 }
                 if GoalState.edit-open || GoalState.evidence-open: GoalCards { max-width: Theme.composer-max-width; }
+                if ImportState.ask: ImportBar { max-width: Theme.composer-max-width; }
                 if AppState.disconnected: NoticeBar {
                     max-width: Theme.composer-max-width;
                     text: "サーバーに接続できません";

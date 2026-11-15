@@ -144,7 +144,7 @@ pub(crate) fn install(app: &AppWindow) {
                 push("tool", "思考しました".into(), "調べる順番を考えた。".into());
                 push(
                     "tool",
-                    format!("実行: Get-ChildItem -LiteralPath 'D:\\work\\software\\OSS\\ino-code\\gui\\inocode-desktop\\src' -Recurse | Select-String 'pattern{i}' — 完了"),
+                    format!("実行: Get-ChildItem -LiteralPath 'D:\\work\\software\\OSS\\ino-code\\gui\\inocode-desktop-codex\\src' -Recurse | Select-String 'pattern{i}' — 完了"),
                     format!("$ Get-ChildItem ...\n{}", "src\\main.rs:12: match\n".repeat(30)),
                 );
                 let table = "| 項目 | 値 | 備考 |\n|---|---|---|\n| 速度 | 120 トークン/秒 | 実測 |\n| 価格 | $2 / $10 | 参考 |\n";

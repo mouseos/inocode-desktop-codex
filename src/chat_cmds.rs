@@ -29,7 +29,7 @@ pub(crate) fn register(app: &AppWindow, h: &std::rc::Rc<client::Handle>) {
 
 fn say(app: &AppWindow, id: &str, text: &str, detail: &str) {
     crate::view::messages_with(app, |m| crate::view::upsert_tool(m, id, text, Some(detail)));
-    app.invoke_scroll_bottom();
+    app.invoke_scroll_bottom(true);
 }
 
 /// Run one of these commands. False when `cmd` is not one of them.

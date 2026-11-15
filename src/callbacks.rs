@@ -34,7 +34,7 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         if missing {
             // Not silent: the text stays in the composer, and the chat says why nothing was sent.
             crate::view::messages_with(&app, |m| crate::view::upsert_tool(m, "no-model", "モデルを選んでください", None));
-            app.invoke_scroll_bottom();
+            app.invoke_scroll_bottom(true);
             return;
         }
         crate::attach::clear_suggestions(&app);
@@ -67,7 +67,7 @@ pub(crate) fn register(app: &AppWindow, handle: &Rc<client::Handle>) {
         // While a turn runs the message goes to the queue; otherwise it starts a turn.
         crate::prompts::submit(&app, &h, text);
         app.set_prompt("".into());
-        app.invoke_scroll_bottom();
+        app.invoke_scroll_bottom(true);
     });
     let h = handle.clone();
     app.global::<AppState>().on_new_chat(move || h.send(Command::NewThread));

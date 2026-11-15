@@ -311,7 +311,7 @@ fn on_sent(app: &AppWindow, id: &str, result: &Result<Value, String>) {
                 // Into the running turn: it shows in the chat now. (A queued one shows when it starts.)
                 if FOLLOW_STEER.with(|f| f.get()) && o.extra.is_empty() {
                     crate::view::messages_with(app, |m| crate::view::push(m, "", "user", &o.text));
-                    app.invoke_scroll_bottom();
+                    app.invoke_scroll_bottom(true);
                 }
             }
             list_queue();

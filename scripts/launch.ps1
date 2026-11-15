@@ -13,9 +13,9 @@ param([switch]$Check, [switch]$NoStart)
 $ErrorActionPreference = 'Stop'
 $gui = Split-Path $PSScriptRoot -Parent
 $root = Split-Path (Split-Path $gui -Parent) -Parent
-$srv = Join-Path $root 'cli\inocode'
+$srv = Join-Path $root 'cli\inocode-codex'
 $srvOut = Join-Path $srv 'codex-rs\target-win\dev-small'
-$guiOut = Join-Path $gui 'target\debug'
+$guiOut = Join-Path $gui 'target\gui'
 $run = Join-Path $gui 'target\run'
 $logs = Join-Path $env:TEMP 'inocode-launch'
 New-Item -ItemType Directory -Force $logs | Out-Null
@@ -95,7 +95,7 @@ if (-not $failed -and $guiOld) {
     Push-Location $gui
     $ErrorActionPreference = 'Continue'
     try {
-        & cargo build *> $log
+        & cargo build --profile gui *> $log
         $code = $LASTEXITCODE
     } finally { Pop-Location; $ErrorActionPreference = 'Stop' }
     if ($code -ne 0) { Show-Failure 'GUI' $log; $failed = $true }

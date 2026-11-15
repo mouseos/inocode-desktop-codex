@@ -15,6 +15,9 @@ const SYNC_EVERY: Duration = Duration::from_millis(80);
 
 thread_local! {
     static STREAM: RefCell<Cache> = RefCell::new(Cache::default());
+    /// The rows of the last update, with the row they started at: a block that is the same as
+    /// before is not made again (its StyledText and its code lines are kept).
+    static PREV: RefCell<(usize, Vec<Row>)> = const { RefCell::new((usize::MAX, Vec::new())) };
     static LAST_SYNC: Cell<Option<Instant>> = const { Cell::new(None) };
     static DEMO_STARTED: Cell<bool> = const { Cell::new(false) };
     static DEMO_TIMERS: RefCell<Vec<slint::Timer>> = const { RefCell::new(Vec::new()) };
@@ -54,6 +57,7 @@ pub(crate) fn to_md_row(r: &Row) -> MdRow {
         r.cells.iter().map(|c| if r.level == 1 { styled(&format!("**{c}**")) } else { styled(c) }).collect();
     MdRow {
         kind,
+        src: r.md.as_str().into(),
         level: r.level,
         depth: r.depth,
         quote: r.quote,
@@ -67,6 +71,51 @@ pub(crate) fn to_md_row(r: &Row) -> MdRow {
     }
 }
 
+/// A block, reusing what the previous row already holds: an unchanged block keeps its text, and a
+/// code block that only grew keeps its lines and colours all but the new ones again.
+fn to_md_row_with(r: &Row, prev: Option<&MdRow>) -> MdRow {
+    let Some(p) = prev else { return to_md_row(r) };
+    let same_shape = p.kind == kind_of(r.kind) && p.level == r.level && p.depth == r.depth && p.quote == r.quote && p.marker == r.marker.as_str() && p.lang == r.lang.as_str();
+    if same_shape && r.kind != Kind::Code && p.src == r.md.as_str() {
+        // nothing in this block changed
+        return p.clone();
+    }
+    if same_shape && r.kind == Kind::Code && r.code.starts_with(p.code.as_str()) {
+        // The block only grew: the lines that were there stay as they are drawn, the rest is new.
+        let new_lines = crate::highlight::highlight(&r.lang, &r.code);
+        if let Some(old) = p.lines.as_any().downcast_ref::<VecModel<MdLine>>() {
+            let keep = old.row_count().saturating_sub(1);
+            if old.row_count() <= new_lines.len() {
+                for (i, line) in new_lines.iter().enumerate().skip(keep) {
+                    let md = markdown::code_line_md(line);
+                    let text = StyledText::from_markdown(&md).unwrap_or_else(|_| StyledText::from_plain_text(&md));
+                    let l = MdLine { text };
+                    if i < old.row_count() {
+                        old.set_row_data(i, l);
+                    } else {
+                        old.push(l);
+                    }
+                }
+                let mut row = to_md_row(r);
+                row.lines = ModelRc::from(p.lines.clone());
+                return row;
+            }
+        }
+    }
+    to_md_row(r)
+}
+
+fn kind_of(k: Kind) -> i32 {
+    match k {
+        Kind::Paragraph => 0,
+        Kind::Heading => 1,
+        Kind::Item => 2,
+        Kind::Code => 3,
+        Kind::Table => 4,
+        Kind::Rule => 5,
+    }
+}
+
 /// The blocks of a whole answer (history).
 pub(crate) fn blocks_of(text: &str) -> ModelRc<MdRow> {
     let rows: Vec<MdRow> = markdown::parse_rows(text).iter().map(to_md_row).collect();
@@ -76,6 +125,7 @@ pub(crate) fn blocks_of(text: &str) -> ModelRc<MdRow> {
 /// A new answer starts (or the conversation was replaced).
 pub(crate) fn reset() {
     STREAM.with(|c| *c.borrow_mut() = Cache::default());
+    PREV.with(|p| *p.borrow_mut() = (usize::MAX, Vec::new()));
     LAST_SYNC.with(|l| l.set(None));
 }
 
@@ -100,6 +150,13 @@ pub(crate) fn sync_last(app: &AppWindow, force: bool) {
             LAST_SYNC.with(|l| l.set(Some(now)));
             return;
         };
+        // The rows the last update made, when it started at the same place: a block that is the
+        // same is already on the screen and is not made again (a streaming code block grew, so
+        // only its new lines are drawn again).
+        let prev = PREV.with(|p| {
+            let mut p = p.borrow_mut();
+            if p.0 == from { (p.0, std::mem::take(&mut p.1)) } else { (usize::MAX, Vec::new()) }
+        });
         if vec.row_count() < from {
             // not what was expected: all again
             let all = STREAM.with(|c| c.borrow_mut().update(&text));
@@ -109,11 +166,16 @@ pub(crate) fn sync_last(app: &AppWindow, force: bool) {
             for r in &all {
                 vec.push(to_md_row(r));
             }
+            PREV.with(|p| *p.borrow_mut() = (usize::MAX, Vec::new()));
         } else {
             // the first `from` rows are final and already there; the others are written again
             for (k, r) in rows.iter().enumerate() {
-                let new = to_md_row(r);
                 let idx = from + k;
+                if prev.0 == from && prev.1.get(k) == Some(r) && idx < vec.row_count() {
+                    continue;
+                }
+                let before = if idx < vec.row_count() { vec.row_data(idx) } else { None };
+                let new = to_md_row_with(r, before.as_ref());
                 if idx < vec.row_count() {
                     vec.set_row_data(idx, new);
                 } else {
@@ -123,6 +185,7 @@ pub(crate) fn sync_last(app: &AppWindow, force: bool) {
             while vec.row_count() > from + rows.len() {
                 vec.remove(vec.row_count() - 1);
             }
+            PREV.with(|p| *p.borrow_mut() = (from, rows.clone()));
         }
         LAST_SYNC.with(|l| l.set(Some(now)));
     });

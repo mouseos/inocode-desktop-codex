@@ -237,7 +237,7 @@ fn elsewhere_label(summary: &Value) -> String {
     format!("他の端末の使用 5時間枠 +{} · 週枠 +{}", pct_label(p), pct_label(w))
 }
 
-fn estimate_label(v: &Value) -> String {
+pub(crate) fn estimate_label(v: &Value) -> String {
     if v.get("insufficient").and_then(Value::as_bool).unwrap_or(false) {
         return "データが足りない".into();
     }

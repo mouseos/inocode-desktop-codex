@@ -1,0 +1,197 @@
+import { Theme } from "theme.slint";
+
+// 履歴の取り込み(設定ページの 1 項目)と、取り込んだセッションを初めて開いたときの問い合わせ。
+// このファイルと src/import_page.rs。
+
+export struct ImportRow {
+    source: string,
+    project: string,
+    title: string,
+    date: string,
+    size: string,
+    // "" / "取り込み済み" / "変更あり" / 失敗の理由
+    status: string,
+    imported: bool,
+    checked: bool,
+}
+
+export struct MemoryRow {
+    source: string,
+    name: string,
+    project: string,
+    date: string,
+    size: string,
+}
+
+export global ImportState {
+    in property <[ImportRow]> sessions;
+    in property <[MemoryRow]> memories;
+    in property <bool> loading;
+    in property <bool> running;
+    in property <string> progress;
+    in property <int> checked-count;
+    // 取り込んだセッションを開いたときの問い合わせ
+    in property <bool> ask;
+    in property <string> ask-text;
+    callback detect();
+    callback toggle(int);
+    callback toggle-all();
+    callback run();
+    callback open(int);
+    callback extract-memory(int);
+    callback extract();
+    callback later();
+    callback quiet();
+}
+
+component SmallButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: 28px;
+    width: t.preferred-width + 24px;
+    border-radius: Theme.radius-row;
+    background: !root.enabled ? Theme.hover
+        : root.primary ? (ta.has-hover ? Theme.fg-secondary : Theme.fg)
+        : ta.has-hover ? Theme.pressed : Theme.selected;
+    t := Text {
+        text: root.label;
+        color: !root.enabled ? Theme.fg-tertiary : root.primary ? Theme.surface : Theme.fg;
+        font-size: 12px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => { root.clicked(); }
+    }
+}
+
+component Check inherits Rectangle {
+    in property <bool> on;
+    callback toggled;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: root.on ? Theme.fg : Theme.fg-tertiary;
+    background: root.on ? Theme.fg : transparent;
+    if root.on: Text { text: "✓"; color: Theme.surface; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+    TouchArea { mouse-cursor: MouseCursor.pointer; clicked => { root.toggled(); } }
+}
+
+component Cell inherits Text {
+    color: Theme.fg-secondary;
+    font-size: 12px;
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+component GroupHead inherits Text {
+    color: Theme.fg;
+    font-size: 13px;
+    font-weight: 600;
+    height: 32px;
+    vertical-alignment: bottom;
+}
+
+export component ImportPage inherits VerticalLayout {
+    spacing: 8px;
+    HorizontalLayout {
+        spacing: 8px;
+        height: 28px;
+        SmallButton { label: "見つける"; enabled: !ImportState.running; clicked => { ImportState.detect(); } }
+        SmallButton {
+            label: ImportState.checked-count > 0 ? "選んだ " + ImportState.checked-count + " 件を取り込む" : "取り込む";
+            primary: true;
+            enabled: ImportState.checked-count > 0 && !ImportState.running;
+            clicked => { ImportState.run(); }
+        }
+        Text { text: ImportState.progress; color: Theme.fg-secondary; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+    }
+    if ImportState.loading: Text { text: "読み込み中…"; color: Theme.fg-tertiary; font-size: 13px; }
+    Flickable {
+        vertical-stretch: 1;
+        viewport-height: list.preferred-height;
+        list := VerticalLayout {
+            width: parent.width;
+            spacing: 0px;
+            alignment: start;
+            if ImportState.sessions.length > 0: HorizontalLayout {
+                spacing: 8px;
+                GroupHead { text: "セッション"; horizontal-stretch: 1; }
+                VerticalLayout {
+                    alignment: end;
+                    SmallButton { label: "すべて選ぶ"; clicked => { ImportState.toggle-all(); } }
+                }
+            }
+            for row[i] in ImportState.sessions: Rectangle {
+                height: 32px;
+                border-radius: Theme.radius-row;
+                background: rta.has-hover ? Theme.hover : transparent;
+                rta := TouchArea { }
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 10px;
+                    VerticalLayout {
+                        alignment: center;
+                        Check { on: row.checked; toggled => { ImportState.toggle(i); } }
+                    }
+                    Cell { text: row.source; width: 76px; }
+                    Cell { text: row.project; width: 120px; }
+                    Cell { text: row.title; color: Theme.fg; horizontal-stretch: 1; }
+                    Cell { text: row.date; width: 76px; }
+                    Cell { text: row.size; width: 64px; horizontal-alignment: right; }
+                    Cell { text: row.status; width: 96px; color: row.imported ? Theme.fg-secondary : Theme.danger; }
+                    if row.imported: VerticalLayout {
+                        alignment: center;
+                        SmallButton { label: "開く"; clicked => { ImportState.open(i); } }
+                    }
+                }
+            }
+            if ImportState.memories.length > 0: GroupHead { text: "メモリと指示"; }
+            for m[i] in ImportState.memories: Rectangle {
+                height: 32px;
+                border-radius: Theme.radius-row;
+                background: mta.has-hover ? Theme.hover : transparent;
+                mta := TouchArea { }
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 10px;
+                    Cell { text: m.source; width: 76px; }
+                    Cell { text: m.project; width: 120px; }
+                    Cell { text: m.name; color: Theme.fg; horizontal-stretch: 1; }
+                    Cell { text: m.date; width: 76px; }
+                    Cell { text: m.size; width: 64px; horizontal-alignment: right; }
+                    VerticalLayout {
+                        alignment: center;
+                        SmallButton { label: "抽出"; enabled: !ImportState.running; clicked => { ImportState.extract-memory(i); } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 取り込んだセッションを初めて開いたときの 1 行。
+export component ImportBar inherits Rectangle {
+    border-radius: Theme.radius-composer;
+    background: Theme.composer;
+    border-width: 1px;
+    border-color: Theme.border;
+    height: row.preferred-height;
+    row := HorizontalLayout {
+        padding: 10px;
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 8px;
+        Text { text: ImportState.ask-text; color: Theme.fg; font-size: 12px; wrap: word-wrap; vertical-alignment: center; horizontal-stretch: 1; }
+        VerticalLayout { alignment: center; SmallButton { label: "抽出する"; primary: true; clicked => { ImportState.extract(); } } }
+        VerticalLayout { alignment: center; SmallButton { label: "あとで"; clicked => { ImportState.later(); } } }
+        VerticalLayout { alignment: center; SmallButton { label: "このプロジェクトでは聞かない"; clicked => { ImportState.quiet(); } } }
+    }
+}

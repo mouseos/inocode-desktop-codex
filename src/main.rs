@@ -19,6 +19,7 @@ mod errmsg;
 mod git_panel;
 mod gui_prefs;
 mod highlight;
+mod import_page;
 mod markdown;
 mod events;
 mod metrics;
@@ -34,6 +35,7 @@ mod snapshot;
 mod settings_mcp;
 mod settings_plugins;
 mod state;
+mod stream;
 mod thread_stats;
 mod side_panel;
 mod tabs;
@@ -101,6 +103,7 @@ fn main() {
     callbacks::register(&app, &handle);
     snapshot::install(&app);
     settings_page::init(&app);
+    import_page::install(&app);
     app.run().unwrap();
     // Closing the window: stop the client so the app-server child it started exits too.
     handle.shutdown();

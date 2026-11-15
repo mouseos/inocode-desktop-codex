@@ -109,6 +109,7 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
             crate::projects::request_list();
         }
         Event::ThreadActive { id, title } => {
+            let (active_id, active_title) = (id.clone(), title.clone());
             crate::sidebar::on_thread_active(&id);
             crate::metrics::reset(app);
             crate::nav::visit(app, crate::nav::Entry::Thread(id.clone()));
@@ -131,8 +132,10 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
             drop(st);
             // The checklist panel shows the working checklist of this thread.
             crate::tabs::kb::render_plan(app);
+            crate::import_page::on_thread_active(app, &active_id, &active_title);
         }
         Event::History(list) => {
+            crate::stream::reset();
             let rows: Vec<Message> = list
                 .into_iter()
                 .map(|Msg { id, role, text, detail, turn_id, item_index }| {
@@ -144,13 +147,14 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
                 .collect();
             crate::chat_md::reset();
             app.global::<AppState>().set_messages(ModelRc::from(Rc::new(VecModel::from(rows))));
-            app.invoke_scroll_bottom();
+            app.invoke_scroll_bottom(true);
             crate::chat_actions::after_history(app);
             crate::reply::number_all(app);
             crate::thread_stats::refresh(app);
         }
         Event::AssistantStart => {
             // The answer before is final now; a new one starts.
+            crate::stream::flush(app);
             crate::chat_md::sync_last(app, true);
             crate::chat_md::reset();
             messages_with(app, |m| push(m, "", "assistant", ""));
@@ -159,20 +163,13 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
         Event::TokenSplit { input, cached, output, total } => crate::thread_stats::usage(app, input, cached, output, total),
         Event::Delta(delta) => {
             crate::metrics::chunk(app, &delta);
-            messages_with(app, |model| {
-                let n = model.row_count();
-                match model.row_data(n.wrapping_sub(1)) {
-                    Some(mut last) if last.role == "assistant" => {
-                        last.text.push_str(&delta);
-                        model.set_row_data(n - 1, last);
-                    }
-                    _ => push(model, "", "assistant", &delta),
-                }
-            });
-            crate::chat_md::sync_last(app, false);
-            app.invoke_scroll_bottom();
+            // Written to the screen at a fixed interval (src/stream.rs): one layout per tick, not
+            // one per piece.
+            crate::stream::delta(&delta);
+            crate::stream::start(app);
         }
         Event::Tool { id, text, detail } => {
+            crate::stream::flush(app);
             crate::chat_md::sync_last(app, true);
             // A finished item brings its whole body; an empty one keeps what streamed in. The single
             // changes of a turn that has its diff row are not shown again.
@@ -182,28 +179,15 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
                 }
                 upsert_tool(model, &id, &text, if detail.is_empty() { None } else { Some(&detail) });
             });
-            app.invoke_scroll_bottom();
+            app.invoke_scroll_bottom(true);
         }
         Event::ToolDelta { id, delta } => {
             crate::metrics::chunk(app, &delta);
-            messages_with(app, |model| {
-                for i in 0..model.row_count() {
-                    if let Some(mut row) = model.row_data(i) {
-                        if row.role == "tool" && row.id == id.as_str() {
-                            // The body of a diff is the diff; the output of the patch is not added to it.
-                            if row.diff.row_count() > 0 {
-                                return;
-                            }
-                            let joined = format!("{}{}", row.detail, delta);
-                            row.detail = clip_detail(&joined).into();
-                            model.set_row_data(i, row);
-                            return;
-                        }
-                    }
-                }
-            });
+            crate::stream::tool_delta(&id, &delta);
+            crate::stream::start(app);
         }
         Event::Note { id, text, detail } => {
+            crate::stream::flush(app);
             messages_with(app, |model| {
                 // The edits of the turn are one row: the rows of the single changes go.
                 if id == "turn-diff" {
@@ -215,7 +199,7 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
                 }
                 upsert_tool(model, &id, &text, Some(&detail));
             });
-            app.invoke_scroll_bottom();
+            app.invoke_scroll_bottom(true);
         }
         Event::TurnStarted => {
             crate::metrics::turn_started(app);
@@ -226,6 +210,7 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
             rebuild_projects(app, &st);
         }
         Event::TurnDone { interrupted } => {
+            crate::stream::flush(app);
             crate::chat_md::sync_last(app, true);
             crate::reply::after_turn(app);
             crate::metrics::turn_done(app);
@@ -252,7 +237,7 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
             });
             if interrupted {
                 messages_with(app, |m| push(m, "", "tool", "中断しました"));
-                app.invoke_scroll_bottom();
+                app.invoke_scroll_bottom(true);
             }
         }
         Event::Approval(info) => {
@@ -308,7 +293,7 @@ pub(crate) fn apply(app: &AppWindow, state: &RefCell<State>, event: Event) {
                 let text = if why.is_empty() { format!("アカウントを切り替えました: {to}") } else { format!("アカウントを切り替えました: {to} ({why})") };
                 let id = format!("switch:{}", messages_with(app, |m| m.row_count()).unwrap_or(0));
                 messages_with(app, |m| upsert_tool(m, &id, &text, None));
-                app.invoke_scroll_bottom();
+                app.invoke_scroll_bottom(true);
             }
             crate::coding::on_notify(app, &method, &params);
             crate::cards::on_notify(app, &method, &params);

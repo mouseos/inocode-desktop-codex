@@ -16,6 +16,7 @@ mod knowledge;
 pub(crate) mod kb;
 mod settings;
 mod stats;
+pub(crate) use stats::estimate_label;
 mod goal;
 mod team;
 mod team_graph;

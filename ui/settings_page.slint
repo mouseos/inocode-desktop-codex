@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { ImportPage } from "import_page.slint";
 import { Icon, Glyph } from "icons.slint";
 import { IconButton, Switch } from "widgets.slint";
 import { InocodePage } from "tabs/settings.slint";
@@ -279,6 +280,13 @@ export component SettingsPage inherits Rectangle {
                                     }
                                 }
                                 InocodePage { vertical-stretch: 1; }
+                            }
+                            if SettingsPageState.layout == 8: VerticalLayout {
+                                padding: 28px;
+                                padding-top: 20px;
+                                spacing: 4px;
+                                Text { text: SettingsPageState.title; color: Theme.fg; font-size: 18px; font-weight: 700; height: 40px; vertical-alignment: center; }
+                                ImportPage { vertical-stretch: 1; }
                             }
                             if SettingsPageState.layout == 7: VerticalLayout {
                                 padding: 28px;

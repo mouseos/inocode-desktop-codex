@@ -92,7 +92,7 @@ pub(super) fn open_ws(url: &str) -> Result<Conn, String> {
 }
 
 /// Where `inocode.exe` is looked up, in order: `INOCODE_BIN`, PATH, next to this
-/// executable, then development build output (`cli/inocode/codex-rs/target-win/dev-small`)
+/// executable, then development build output (`cli/inocode-codex/codex-rs/target-win/dev-small`)
 /// relative to the executable and to the working directory.
 pub fn find_inocode(configured: &str) -> Result<std::path::PathBuf, String> {
     find_binary(configured, if cfg!(windows) { "inocode.exe" } else { "inocode" })

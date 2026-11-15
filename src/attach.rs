@@ -437,7 +437,7 @@ pub(crate) fn take_inputs(app: &AppWindow) -> Vec<Value> {
 /// A row in the chat that tells something (no server involved).
 fn say(app: &AppWindow, id: &str, text: &str, detail: &str) {
     crate::view::messages_with(app, |m| crate::view::upsert_tool(m, id, text, Some(detail)));
-    app.invoke_scroll_bottom();
+    app.invoke_scroll_bottom(true);
 }
 
 /// The conversation as a Markdown file: who spoke, and what was run.

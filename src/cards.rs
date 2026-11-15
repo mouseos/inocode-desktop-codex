@@ -350,7 +350,7 @@ fn show(app: &AppWindow, id: &str) {
         }
     });
     if fresh {
-        app.invoke_scroll_bottom();
+        app.invoke_scroll_bottom(true);
     }
 }
 
